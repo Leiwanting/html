@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Display｜时间显示</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Orbitron', sans-serif;
+            overflow-x: hidden;
+        }
+        .menu-btn {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            width: 32px;
+            height: 24px;
+            cursor: pointer;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .menu-btn:hover { opacity: 0.6; }
+        .menu-btn span {
+            display: block;
+            width: 100%;
+            height: 2px;
+            background-color: #111;
+            transition: all 0.3s ease;
+        }
+        .menu-btn.active span:nth-child(1) { transform: rotate(45deg) translate(8px, 8px); }
+        .menu-btn.active span:nth-child(2) { opacity: 0; }
+        .menu-btn.active span:nth-child(3) { transform: rotate(-45deg) translate(8px, -8px); }
+        .sidebar-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.08);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 150;
+        }
+        .sidebar-overlay.active { opacity: 1; visibility: visible; }
+        .sidebar {
+            position: fixed;
+            top: 0; left: -320px;
+            width: 280px; height: 100%;
+            background-color: #fff;
+            border-right: 1px solid #eee;
+            z-index: 160;
+            transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 80px 28px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            overflow-y: auto;
+        }
+        .sidebar.active { left: 0; }
+        .sidebar-section { display: flex; flex-direction: column; gap: 10px; }
+        .sidebar-label {
+            font-size: 0.6rem;
+            font-weight: 500;
+            color: #aaa;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        .lang-options { display: flex; flex-wrap: wrap; gap: 6px; }
+        .lang-btn {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: #fff;
+            color: #999;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            outline: none;
+        }
+        .lang-btn:hover { border-color: #111; color: #111; }
+        .lang-btn.active { border-color: #111; background-color: #111; color: #fff; }
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .toggle-track {
+            width: 40px;
+            height: 22px;
+            background-color: #ddd;
+            border-radius: 11px;
+            position: relative;
+            transition: background-color 0.3s ease;
+            flex-shrink: 0;
+        }
+        .toggle-track.on { background-color: #111; }
+        .toggle-thumb {
+            position: absolute;
+            top: 2px; left: 2px;
+            width: 18px; height: 18px;
+            background-color: #fff;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        .toggle-track.on .toggle-thumb { transform: translateX(18px); }
+        .toggle-label {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            color: #333;
+            letter-spacing: 1px;
+        }
+        .timezone-select, .color-select {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            background: #fff;
+            color: #333;
+            outline: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        .timezone-select:focus, .color-select:focus { border-color: #111; }
+        .color-preview {
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+            flex-shrink: 0;
+        }
+        .clock-container {
+            text-align: center;
+            padding: 40px 20px;
+            width: 100%;
+            max-width: 900px;
+        }
+        .date-section {
+            font-size: 1.8rem;
+            font-weight: 400;
+            color: #333;
+            letter-spacing: 3px;
+            margin-bottom: 12px;
+            min-height: 2.4rem;
+        }
+        .time-section {
+            font-size: 4.5rem;
+            font-weight: 700;
+            color: #111;
+            letter-spacing: 6px;
+            white-space: nowrap;
+        }
+        .colon { animation: blink 1s infinite; }
+        .colon.static { animation: none; }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .label {
+            font-size: 0.75rem;
+            font-weight: 400;
+            color: #888;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+        .info-line {
+            font-size: 1rem;
+            font-weight: 400;
+            color: #666;
+            letter-spacing: 3px;
+            margin-top: 10px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            min-height: 1.4rem;
+        }
+        .info-line.show { opacity: 1; }
+        .info-line.small {
+            font-size: 0.85rem;
+            color: #999;
+            letter-spacing: 2px;
+            margin-top: 6px;
+            min-height: 1.2rem;
+        }
+        .info-line.tiny {
+            font-size: 0.75rem;
+            color: #bbb;
+            letter-spacing: 2px;
+            margin-top: 4px;
+            min-height: 1.1rem;
+        }
+        .stopwatch-display {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #111;
+            letter-spacing: 4px;
+            margin-top: 20px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            min-height: 4rem;
+        }
+        .stopwatch-display.show { opacity: 1; }
+        .stopwatch-controls {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 12px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+        .stopwatch-controls.show { opacity: 1; }
+        .sw-btn {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            padding: 8px 20px;
+            border: 1px solid #111;
+            background: #fff;
+            color: #111;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            outline: none;
+            text-transform: uppercase;
+        }
+        .sw-btn:hover { background: #111; color: #fff; }
+        .sw-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .timer-display {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #111;
+            letter-spacing: 4px;
+            margin-top: 20px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            min-height: 4rem;
+        }
+        .timer-display.show { opacity: 1; }
+        .timer-controls {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 12px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            flex-wrap: wrap;
+        }
+        .timer-controls.show { opacity: 1; }
+        .timer-input {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            width: 50px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            text-align: center;
+            outline: none;
+        }
+        .timer-input:focus { border-color: #111; }
+        @media (max-width: 600px) {
+            .time-section { font-size: 2.8rem; letter-spacing: 3px; }
+            .date-section { font-size: 1.1rem; letter-spacing: 2px; }
+            .label { font-size: 0.6rem; letter-spacing: 1px; }
+            .info-line { font-size: 0.85rem; letter-spacing: 2px; }
+            .info-line.small { font-size: 0.75rem; }
+            .info-line.tiny { font-size: 0.65rem; }
+            .stopwatch-display, .timer-display { font-size: 2.2rem; }
+            .menu-btn { top: 16px; left: 16px; width: 28px; height: 20px; }
+            .menu-btn.active { left: 228px; }
+            .clock-container { padding: 20px 12px; }
+        }
+        @media (max-width: 380px) {
+            .time-section { font-size: 2.2rem; letter-spacing: 2px; }
+            .date-section { font-size: 0.9rem; letter-spacing: 1px; }
+            .menu-btn.active { left: 228px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="menu-btn" id="menuBtn">
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="lang_label">Language</div>
+            <div class="lang-options">
+                <button class="lang-btn active" data-lang="en">EN</button>
+                <button class="lang-btn" data-lang="zh">中</button>
+                <button class="lang-btn" data-lang="ja">日</button>
+                <button class="lang-btn" data-lang="ko">한</button>
+                <button class="lang-btn" data-lang="fr">FR</button>
+                <button class="lang-btn" data-lang="de">DE</button>
+                <button class="lang-btn" data-lang="es">ES</button>
+                <button class="lang-btn" data-lang="ru">RU</button>
+                <button class="lang-btn" data-lang="ar">ع</button>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="ganzhi_label">Ganzhi Calendar</div>
+            <div class="toggle-row" id="ganzhiToggle">
+                <div class="toggle-track" id="ganzhiTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="ganzhi_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="week_label">Week Number</div>
+            <div class="toggle-row" id="weekToggle">
+                <div class="toggle-track" id="weekTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="week_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="julian_label">Julian Day</div>
+            <div class="toggle-row" id="julianToggle">
+                <div class="toggle-track" id="julianTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="julian_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="dayofyear_label">Day of Year</div>
+            <div class="toggle-row" id="doyToggle">
+                <div class="toggle-track" id="doyTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="doy_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="moon_label">Moon Phase</div>
+            <div class="toggle-row" id="moonToggle">
+                <div class="toggle-track" id="moonTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="moon_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="sun_label">Sunrise / Sunset</div>
+            <div class="toggle-row" id="sunToggle">
+                <div class="toggle-track" id="sunTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="sun_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="timezone_label">Timezone</div>
+            <select class="timezone-select" id="timezoneSelect">
+                <option value="local">Local Time</option>
+                <option value="UTC">UTC</option>
+                <option value="America/New_York">New York</option>
+                <option value="America/Los_Angeles">Los Angeles</option>
+                <option value="Europe/London">London</option>
+                <option value="Europe/Paris">Paris</option>
+                <option value="Europe/Berlin">Berlin</option>
+                <option value="Asia/Tokyo">Tokyo</option>
+                <option value="Asia/Shanghai">Shanghai</option>
+                <option value="Asia/Seoul">Seoul</option>
+                <option value="Asia/Dubai">Dubai</option>
+                <option value="Australia/Sydney">Sydney</option>
+                <option value="Pacific/Auckland">Auckland</option>
+            </select>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="tzshow_label">Show Timezone</div>
+            <div class="toggle-row" id="tzToggle">
+                <div class="toggle-track" id="tzTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="tz_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="seconds_label">Show Seconds</div>
+            <div class="toggle-row" id="secondsToggle">
+                <div class="toggle-track on" id="secondsTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="seconds_on">ON</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="colon_label">Blinking Colon</div>
+            <div class="toggle-row" id="colonToggle">
+                <div class="toggle-track on" id="colonTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="colon_on">ON</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="24h_label">24-Hour Format</div>
+            <div class="toggle-row" id="formatToggle">
+                <div class="toggle-track on" id="formatTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="24h_on">ON</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="stopwatch_label">Stopwatch</div>
+            <div class="toggle-row" id="swToggle">
+                <div class="toggle-track" id="swTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="sw_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="timer_label">Countdown Timer</div>
+            <div class="toggle-row" id="timerToggle">
+                <div class="toggle-track" id="timerTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="timer_off">OFF</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="color_label">Accent Color</div>
+            <select class="color-select" id="colorSelect">
+                <option value="black">Black</option>
+                <option value="red">Red</option>
+                <option value="blue">Blue</option>
+                <option value="green">Green</option>
+                <option value="orange">Orange</option>
+                <option value="purple">Purple</option>
+            </select>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="fullscreen_label">Fullscreen</div>
+            <div class="toggle-row" id="fsToggle">
+                <div class="toggle-track" id="fsTrack"><div class="toggle-thumb"></div></div>
+                <span class="toggle-label" data-i18n="fs_off">OFF</span>
+            </div>
+        </div>
+    </div>
+    <div class="clock-container">
+        <div class="date-section" id="date"></div>
+        <div class="time-section" id="time"></div>
+        <div class="label" id="label"></div>
+        <div class="info-line" id="ganzhi"></div>
+        <div class="info-line small" id="week"></div>
+        <div class="info-line small" id="julian"></div>
+        <div class="info-line small" id="doy"></div>
+        <div class="info-line small" id="moon"></div>
+        <div class="info-line small" id="sun"></div>
+        <div class="info-line tiny" id="tz"></div>
+        <div class="stopwatch-display" id="swDisplay">
+            <span id="swMin">00</span>:<span id="swSec">00</span>.<span id="swMs">00</span>
+        </div>
+        <div class="stopwatch-controls" id="swControls">
+            <button class="sw-btn" id="swStart">START</button>
+            <button class="sw-btn" id="swStop">STOP</button>
+            <button class="sw-btn" id="swReset">RESET</button>
+        </div>
+        <div class="timer-display" id="timerDisplay">
+            <span id="tmMin">00</span>:<span id="tmSec">00</span>
+        </div>
+        <div class="timer-controls" id="timerControls">
+            <input class="timer-input" id="tmMinInput" type="number" min="0" max="99" value="5" placeholder="MM">
+            <input class="timer-input" id="tmSecInput" type="number" min="0" max="59" value="00" placeholder="SS">
+            <button class="sw-btn" id="tmStart">START</button>
+            <button class="sw-btn" id="tmPause">PAUSE</button>
+            <button class="sw-btn" id="tmReset">RESET</button>
+        </div>
+    </div>
+
+<script>
+const heavenlyStems = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+const earthlyBranches = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+const zodiacAnimals = ['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
+const moonPhases = ['New Moon','Waxing Crescent','First Quarter','Waxing Gibbous','Full Moon','Waning Gibbous','Last Quarter','Waning Crescent'];
+const moonPhasesZh = ['新月','娥眉月','上弦月','盈凸月','满月','亏凸月','下弦月','残月'];
+
+function getGanzhiYear(y){ return heavenlyStems[(y-4)%10]+earthlyBranches[(y-4)%12]; }
+function getZodiac(y){ return zodiacAnimals[(y-4)%12]; }
+function getGanzhiMonth(y,m){
+    const msb=[2,14,26,38,50,62,74,86,98,110][(y-4)%10]%10;
+    return heavenlyStems[(msb+m-1)%10]+earthlyBranches[(m+1)%12];
+}
+function getGanzhiDay(d){
+    const y=d.getFullYear(),m=d.getMonth()+1,day=d.getDate();
+    const c=Math.floor(y/100),y2=y%100;
+    let g=m===1||m===2?4*c+Math.floor(c/4)+5*y2+Math.floor(y2/4)+Math.floor(3*(m+12)/5)+day-3:4*c+Math.floor(c/4)+5*y2+Math.floor(y2/4)+Math.floor(3*m/5)+day-3;
+    return heavenlyStems[(g%10+10)%10]+earthlyBranches[(g%12+12)%12];
+}
+function getGanzhiHour(h){ return earthlyBranches[Math.floor((h+1)/2)%12]; }
+function getWeekNumber(d){
+    const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+    const dn=dt.getUTCDay()||7;
+    dt.setUTCDate(dt.getUTCDate()+4-dn);
+    return Math.ceil((((dt-new Date(Date.UTC(dt.getUTCFullYear(),0,1)))/86400000)+1)/7);
+}
+function getJulianDay(d){
+    const y=d.getFullYear(),m=d.getMonth()+1,day=d.getDate();
+    const a=Math.floor((14-m)/12),yy=y+4800-a,mm=m+12*a-3;
+    return day+Math.floor((153*mm+2)/5)+365*yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)-32045;
+}
+function getDayOfYear(d){ const s=new Date(d.getFullYear(),0,0); return Math.floor((d-s)/86400000); }
+function getMoonPhase(d){
+    const year=d.getFullYear(),month=d.getMonth()+1,day=d.getDate();
+    let c,e,jd,b;
+    if(month<3){year--;month+=12;}
+    c=365.25*year;e=30.6*month;jd=c+e+day-694039.09;jd/=29.5305882;b=parseInt(jd);jd-=b;
+    return Math.round(jd*8)%8;
+}
+function getSunriseSunset(lat,lon,date){
+    const dayOfYear=Math.floor((date-new Date(date.getFullYear(),0,0))/86400000);
+    const pi=Math.PI,rad=pi/180;
+    const latRad=lat*rad;
+    const declination=0.4093*Math.sin(2*pi*(284+dayOfYear)/365);
+    const hourAngle=Math.acos(-Math.tan(latRad)*Math.tan(declination));
+    const sunrise=12-(hourAngle*180/pi)/15;
+    const sunset=12+(hourAngle*180/pi)/15;
+    const sunriseH=Math.floor(sunrise),sunriseM=Math.floor((sunrise-sunriseH)*60);
+    const sunsetH=Math.floor(sunset),sunsetM=Math.floor((sunset-sunsetH)*60);
+    return {rise:`${String(sunriseH).padStart(2,'0')}:${String(sunriseM).padStart(2,'0')}`,set:`${String(sunsetH).padStart(2,'0')}:${String(sunsetM).padStart(2,'0')}`};
+}
+
+const i18n={
+    en:{
+        lang_label:'Language',ganzhi_label:'Ganzhi Calendar',ganzhi_off:'OFF',ganzhi_on:'ON',
+        week_label:'Week Number',week_off:'OFF',week_on:'ON',
+        julian_label:'Julian Day',julian_off:'OFF',julian_on:'ON',
+        dayofyear_label:'Day of Year',doy_off:'OFF',doy_on:'ON',
+        moon_label:'Moon Phase',moon_off:'OFF',moon_on:'ON',
+        sun_label:'Sunrise / Sunset',sun_off:'OFF',sun_on:'ON',
+        timezone_label:'Timezone',tzshow_label:'Show Timezone',tz_off:'OFF',tz_on:'ON',
+        seconds_label:'Show Seconds',seconds_off:'OFF',seconds_on:'ON',
+        colon_label:'Blinking Colon',colon_off:'OFF',colon_on:'ON',
+        '24h_label':'24-Hour Format','24h_off':'OFF','24h_on':'ON',
+        stopwatch_label:'Stopwatch',sw_off:'OFF',sw_on:'ON',
+        timer_label:'Countdown Timer',timer_off:'OFF',timer_on:'ON',
+        color_label:'Accent Color',fullscreen_label:'Fullscreen',fs_off:'OFF',fs_on:'ON',
+        label:'Year / Month / Date / Day / Hour / Minute / Second',
+        months:['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'],
+        days:['SUN','MON','TUE','WED','THU','FRI','SAT']
+    },
+    zh:{
+        lang_label:'语言',ganzhi_label:'干支纪年',ganzhi_off:'关闭',ganzhi_on:'开启',
+        week_label:'周数',week_off:'关闭',week_on:'开启',
+        julian_label:'儒略日',julian_off:'关闭',julian_on:'开启',
+        dayofyear_label:'年内第几天',doy_off:'关闭',doy_on:'开启',
+        moon_label:'月相',moon_off:'关闭',moon_on:'开启',
+        sun_label:'日出日落',sun_off:'关闭',sun_on:'开启',
+        timezone_label:'时区',tzshow_label:'显示时区',tz_off:'关闭',tz_on:'开启',
+        seconds_label:'显示秒数',seconds_off:'关闭',seconds_on:'开启',
+        colon_label:'闪烁冒号',colon_off:'关闭',colon_on:'开启',
+        '24h_label':'24小时制','24h_off':'关闭','24h_on':'开启',
+        stopwatch_label:'秒表',sw_off:'关闭',sw_on:'开启',
+        timer_label:'倒计时',timer_off:'关闭',timer_on:'开启',
+        color_label:'强调色',fullscreen_label:'全屏',fs_off:'关闭',fs_on:'开启',
+        label:'年 / 月 / 日 / 星期 / 时 / 分 / 秒',
+        months:['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
+        days:['周日','周一','周二','周三','周四','周五','周六']
+    },
+    ja:{
+        lang_label:'言語',ganzhi_label:'干支暦',ganzhi_off:'OFF',ganzhi_on:'ON',
+        week_label:'週番号',week_off:'OFF',week_on:'ON',
+        julian_label:'ユリウス日',julian_off:'OFF',julian_on:'ON',
+        dayofyear_label:'年間通算日',doy_off:'OFF',doy_on:'ON',
+        moon_label:'月相',moon_off:'OFF',moon_on:'ON',
+        sun_label:'日の出/日の入',sun_off:'OFF',sun_on:'ON',
+        timezone_label:'タイムゾーン',tzshow_label:'タイムゾーン表示',tz_off:'OFF',tz_on:'ON',
+        seconds_label:'秒表示',seconds_off:'OFF',seconds_on:'ON',
+        colon_label:'点滅コロン',colon_off:'OFF',colon_on:'ON',
+        '24h_label':'24時間制','24h_off':'OFF','24h_on':'ON',
+        stopwatch_label:'ストップウォッチ',sw_off:'OFF',sw_on:'ON',
+        timer_label:'タイマー',timer_off:'OFF',timer_on:'ON',
+        color_label:'アクセント色',fullscreen_label:'全画面',fs_off:'OFF',fs_on:'ON',
+        label:'年 / 月 / 日 / 曜日 / 時 / 分 / 秒',
+        months:['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
+        days:['日','月','火','水','木','金','土']
+    },
+    ko:{
+        lang_label:'언어',ganzhi_label:'간지력',ganzhi_off:'OFF',ganzhi_on:'ON',
+        week_label:'주 번호',week_off:'OFF',week_on:'ON',
+        julian_label:'줄리안 일',julian_off:'OFF',julian_on:'ON',
+        dayofyear_label:'연중 일수',doy_off:'OFF',doy_on:'ON',
+        moon_label:'월상',moon_off:'OFF',moon_on:'ON',
+        sun_label:'일출/일몰',sun_off:'OFF',sun_on:'ON',
+        timezone_label:'시간대',tzshow_label:'시간대 표시',tz_off:'OFF',tz_on:'ON',
+        seconds_label:'초 표시',seconds_off:'OFF',seconds_on:'ON',
+        colon_label:'깜빡이는 콜론',colon_off:'OFF',colon_on:'ON',
+        '24h_label':'24시간제','24h_off':'OFF','24h_on':'ON',
+        stopwatch_label:'스톱워치',sw_off:'OFF',sw_on:'ON',
+        timer_label:'타이머',timer_off:'OFF',timer_on:'ON',
+        color_label:'강조색',fullscreen_label:'전체화면',fs_off:'OFF',fs_on:'ON',
+        label:'년 / 월 / 일 / 요일 / 시 / 분 / 초',
+        months:['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
+        days:['일','월','화','수','목','금','토']
+    },
+    fr:{
+        lang_label:'Langue',ganzhi_label:'Calendrier Ganzhi',ganzhi_off:'OFF',ganzhi_on:'ON',
+        week_label:'Numero Semaine',week_off:'OFF',week_on:'ON',
+        julian_label:'Jour Julien',julian_off:'OFF',julian_on:'ON',
+        dayofyear_label:'Jour de l Annee',doy_off:'OFF',doy_on:'ON',
+        moon_label:'Phase Lune',moon_off:'OFF',moon_on:'ON',
+        sun_label:'Lever/Coucher Soleil',sun_off:'OFF',sun_on:'ON',
+        timezone_label:'Fuseau Horaire',tzshow_label:'Afficher Fuseau',tz_off:'OFF',tz_on:'ON',
+        seconds_label:'Afficher Secondes',seconds_off:'OFF',seconds_on:'ON',
+        colon_label:'Deux Points Clignotant',colon_off:'OFF',colon_on:'ON',
+        '24h_label':'Format 24h','24h_off':'OFF','24h_on':'ON',
+        stopwatch_label:'Chronometre',sw_off:'OFF',sw_on:'ON',
+        timer_label:'Minuteur',timer_off:'OFF',timer_on:'ON',
+        color_label:'Couleur Accent',fullscreen_label:'Plein Ecran',fs_off:'OFF',fs_on:'ON',
+        label:'Annee / Mois / Date / Jour / Heure / Minute / Seconde',
+        months:['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'],
+        days:['DIM','LUN','MAR','MER','JEU','VEN','SAM']
+    },
+    de:{
+        lang_label:'Sprache',ganzhi_label:'Ganzhi-Kalender',ganzhi_off:'AUS',ganzhi_on:'AN',
+        week_label:'Wochennummer',week_off:'AUS',week_on:'AN',
+        julian_label:'Julianischer Tag',julian_off:'AUS',julian_on:'AN',
+        dayofyear_label:'Tag des Jahres',doy_off:'AUS',doy_on:'AN',
+        moon_label:'Mondphase',moon_off:'AUS',moon_on:'AN',
+        sun_label:'Sonnenauf/untergang',sun_off:'AUS',sun_on:'AN',
+        timezone_label:'Zeitzone',tzshow_label:'Zeitzone Anzeigen',tz_off:'AUS',tz_on:'AN',
+        seconds_label:'Sekunden Anzeigen',seconds_off:'AUS',seconds_on:'AN',
+        colon_label:'Blinkender Doppelpunkt',colon_off:'AUS',colon_on:'AN',
+        '24h_label':'24-Stunden-Format','24h_off':'AUS','24h_on':'AN',
+        stopwatch_label:'Stoppuhr',sw_off:'AUS',sw_on:'AN',
+        timer_label:'Timer',timer_off:'AUS',timer_on:'AN',
+        color_label:'Akzentfarbe',fullscreen_label:'Vollbild',fs_off:'AUS',fs_on:'AN',
+        label:'Jahr / Monat / Datum / Tag / Stunde / Minute / Sekunde',
+        months:['JAN','FEB','MAR','APR','MAI','JUN','JUL','AUG','SEP','OKT','NOV','DEZ'],
+        days:['SO','MO','DI','MI','DO','FR','SA']
+    },
+    es:{
+        lang_label:'Idioma',ganzhi_label:'Calendario Ganzhi',ganzhi_off:'OFF',ganzhi_on:'ON',
+        week_label:'Numero Semana',week_off:'OFF',week_on:'ON',
+        julian_label:'Dia Juliano',julian_off:'OFF',julian_on:'ON',
+        dayofyear_label:'Dia del Ano',doy_off:'OFF',doy_on:'ON',
+        moon_label:'Fase Lunar',moon_off:'OFF',moon_on:'ON',
+        sun_label:'Amanecer/Atardecer',sun_off:'OFF',sun_on:'ON',
+        timezone_label:'Zona Horaria',tzshow_label:'Mostrar Zona',tz_off:'OFF',tz_on:'ON',
+        seconds_label:'Mostrar Segundos',seconds_off:'OFF',seconds_on:'ON',
+        colon_label:'Dos Puntos Parpadeante',colon_off:'OFF',colon_on:'ON',
+        '24h_label':'Formato 24h','24h_off':'OFF','24h_on':'ON',
+        stopwatch_label:'Cronometro',sw_off:'OFF',sw_on:'ON',
+        timer_label:'Temporizador',timer_off:'OFF',timer_on:'ON',
+        color_label:'Color Acento',fullscreen_label:'Pantalla Completa',fs_off:'OFF',fs_on:'ON',
+        label:'Ano / Mes / Fecha / Dia / Hora / Minuto / Segundo',
+        months:['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'],
+        days:['DOM','LUN','MAR','MIE','JUE','VIE','SAB']
+    },
+    ru:{
+        lang_label:'Язык',ganzhi_label:'Календарь Ганьчжи',ganzhi_off:'ВЫКЛ',ganzhi_on:'ВКЛ',
+        week_label:'Номер Недели',week_off:'ВЫКЛ',week_on:'ВКЛ',
+        julian_label:'Юлианская Дата',julian_off:'ВЫКЛ',julian_on:'ВКЛ',
+        dayofyear_label:'День Года',doy_off:'ВЫКЛ',doy_on:'ВКЛ',
+        moon_label:'Фаза Луны',moon_off:'ВЫКЛ',moon_on:'ВКЛ',
+        sun_label:'Восход/Закат',sun_off:'ВЫКЛ',sun_on:'ВКЛ',
+        timezone_label:'Часовой Пояс',tzshow_label:'Показать Пояс',tz_off:'ВЫКЛ',tz_on:'ВКЛ',
+        seconds_label:'Показать Секунды',seconds_off:'ВЫКЛ',seconds_on:'ВКЛ',
+        colon_label:'Мигающее Двоеточие',colon_off:'ВЫКЛ',colon_on:'ВКЛ',
+        '24h_label':'24-часовой Формат','24h_off':'ВЫКЛ','24h_on':'ВКЛ',
+        stopwatch_label:'Секундомер',sw_off:'ВЫКЛ',sw_on:'ВКЛ',
+        timer_label:'Таймер',timer_off:'ВЫКЛ',timer_on:'ВКЛ',
+        color_label:'Цвет Акцента',fullscreen_label:'Полный Экран',fs_off:'ВЫКЛ',fs_on:'ВКЛ',
+        label:'Год / Месяц / Дата / День / Час / Минута / Секунда',
+        months:['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'],
+        days:['ВС','ПН','ВТ','СР','ЧТ','ПТ','СБ']
+    },
+    ar:{
+        lang_label:'اللغة',ganzhi_label:'التقويم الصيني',ganzhi_off:'إيقاف',ganzhi_on:'تشغيل',
+        week_label:'رقم الأسبوع',week_off:'إيقاف',week_on:'تشغيل',
+        julian_label:'اليوم اليوليوسي',julian_off:'إيقاف',julian_on:'تشغيل',
+        dayofyear_label:'يوم السنة',doy_off:'إيقاف',doy_on:'تشغيل',
+        moon_label:'طور القمر',moon_off:'إيقاف',moon_on:'تشغيل',
+        sun_label:'الشروق/الغروب',sun_off:'إيقاف',sun_on:'تشغيل',
+        timezone_label:'المنطقة الزمنية',tzshow_label:'عرض المنطقة',tz_off:'إيقاف',tz_on:'تشغيل',
+        seconds_label:'عرض الثواني',seconds_off:'إيقاف',seconds_on:'تشغيل',
+        colon_label:'نقطتان وامضتان',colon_off:'إيقاف',colon_on:'تشغيل',
+        '24h_label':'تنسيق 24 ساعة','24h_off':'إيقاف','24h_on':'تشغيل',
+        stopwatch_label:'ساعة التوقيف',sw_off:'إيقاف',sw_on:'تشغيل',
+        timer_label:'المؤقت',timer_off:'إيقاف',timer_on:'تشغيل',
+        color_label:'لون التمييز',fullscreen_label:'ملء الشاشة',fs_off:'إيقاف',fs_on:'تشغيل',
+        label:'سنة / شهر / تاريخ / يوم / ساعة / دقيقة / ثانية',
+        months:['ينا','فبر','مار','أبر','ماي','يون','يول','أغس','سبت','أكت','نوف','ديس'],
+        days:['أح','إث','ثل','أر','خم','جم','سب']
+    }
+};
+
+let currentLang='en',ganzhiEnabled=false,weekEnabled=false,julianEnabled=false,doyEnabled=false;
+let moonEnabled=false,sunEnabled=false,tzDisplayEnabled=false,secondsEnabled=true,colonEnabled=true;
+let format24h=true,swEnabled=false,timerEnabled=false,fsEnabled=false;
+let selectedTimezone='local',accentColor='black';
+let swRunning=false,swStartTime=0,swElapsed=0,swInterval=null;
+let timerRunning=false,timerRemaining=0,timerInterval=null;
+
+const menuBtn=document.getElementById('menuBtn'),sidebar=document.getElementById('sidebar'),sidebarOverlay=document.getElementById('sidebarOverlay');
+const ganzhiToggle=document.getElementById('ganzhiToggle'),ganzhiTrack=document.getElementById('ganzhiTrack'),ganzhiDisplay=document.getElementById('ganzhi');
+const weekToggle=document.getElementById('weekToggle'),weekTrack=document.getElementById('weekTrack'),weekDisplay=document.getElementById('week');
+const julianToggle=document.getElementById('julianToggle'),julianTrack=document.getElementById('julianTrack'),julianDisplay=document.getElementById('julian');
+const doyToggle=document.getElementById('doyToggle'),doyTrack=document.getElementById('doyTrack'),doyDisplay=document.getElementById('doy');
+const moonToggle=document.getElementById('moonToggle'),moonTrack=document.getElementById('moonTrack'),moonDisplay=document.getElementById('moon');
+const sunToggle=document.getElementById('sunToggle'),sunTrack=document.getElementById('sunTrack'),sunDisplay=document.getElementById('sun');
+const tzToggle=document.getElementById('tzToggle'),tzTrack=document.getElementById('tzTrack'),tzDisplayEl=document.getElementById('tz');
+const timezoneSelect=document.getElementById('timezoneSelect');
+const secondsToggle=document.getElementById('secondsToggle'),secondsTrack=document.getElementById('secondsTrack');
+const colonToggle=document.getElementById('colonToggle'),colonTrack=document.getElementById('colonTrack');
+const formatToggle=document.getElementById('formatToggle'),formatTrack=document.getElementById('formatTrack');
+const swToggle=document.getElementById('swToggle'),swTrack=document.getElementById('swTrack');
+const swDisplay=document.getElementById('swDisplay'),swControls=document.getElementById('swControls');
+const swStart=document.getElementById('swStart'),swStop=document.getElementById('swStop'),swReset=document.getElementById('swReset');
+const timerToggle=document.getElementById('timerToggle'),timerTrack=document.getElementById('timerTrack');
+const timerDisplay=document.getElementById('timerDisplay'),timerControls=document.getElementById('timerControls');
+const tmStart=document.getElementById('tmStart'),tmPause=document.getElementById('tmPause'),tmReset=document.getElementById('tmReset');
+const colorSelect=document.getElementById('colorSelect');
+const fsToggle=document.getElementById('fsToggle'),fsTrack=document.getElementById('fsTrack');
+
+function openSidebar(){ 
+    menuBtn.classList.add('active');
+    menuBtn.style.opacity = '0';
+    menuBtn.style.pointerEvents = 'none';
+    sidebar.classList.add('active');
+    sidebarOverlay.classList.add('active'); 
+}
+
+function closeSidebar(){ 
+    menuBtn.classList.remove('active');
+    menuBtn.style.opacity = '1';
+    menuBtn.style.pointerEvents = 'auto';
+    sidebar.classList.remove('active');
+    sidebarOverlay.classList.remove('active'); 
+}
+menuBtn.addEventListener('click',()=>{ sidebar.classList.contains('active')?closeSidebar():openSidebar(); });
+sidebarOverlay.addEventListener('click',closeSidebar);
+
+document.querySelectorAll('.lang-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+        document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');currentLang=btn.dataset.lang;
+        updateI18n();updateClock();
+    });
+});
+
+function updateI18n(){
+    const t=i18n[currentLang];
+    document.querySelectorAll('[data-i18n]').forEach(el=>{ const key=el.dataset.i18n;if(t[key])el.textContent=t[key]; });
+    ganzhiToggle.querySelector('.toggle-label').textContent=ganzhiEnabled?t.ganzhi_on:t.ganzhi_off;
+    weekToggle.querySelector('.toggle-label').textContent=weekEnabled?t.week_on:t.week_off;
+    julianToggle.querySelector('.toggle-label').textContent=julianEnabled?t.julian_on:t.julian_off;
+    doyToggle.querySelector('.toggle-label').textContent=doyEnabled?t.doy_on:t.doy_off;
+    moonToggle.querySelector('.toggle-label').textContent=moonEnabled?t.moon_on:t.moon_off;
+    sunToggle.querySelector('.toggle-label').textContent=sunEnabled?t.sun_on:t.sun_off;
+    tzToggle.querySelector('.toggle-label').textContent=tzDisplayEnabled?t.tz_on:t.tz_off;
+    secondsToggle.querySelector('.toggle-label').textContent=secondsEnabled?t.seconds_on:t.seconds_off;
+    colonToggle.querySelector('.toggle-label').textContent=colonEnabled?t.colon_on:t.colon_off;
+    formatToggle.querySelector('.toggle-label').textContent=format24h?t['24h_on']:t['24h_off'];
+    swToggle.querySelector('.toggle-label').textContent=swEnabled?t.sw_on:t.sw_off;
+    timerToggle.querySelector('.toggle-label').textContent=timerEnabled?t.timer_on:t.timer_off;
+    fsToggle.querySelector('.toggle-label').textContent=fsEnabled?t.fs_on:t.fs_off;
+}
+
+ganzhiToggle.addEventListener('click',()=>{ ganzhiEnabled=!ganzhiEnabled;ganzhiTrack.classList.toggle('on',ganzhiEnabled);const t=i18n[currentLang];ganzhiToggle.querySelector('.toggle-label').textContent=ganzhiEnabled?t.ganzhi_on:t.ganzhi_off;ganzhiDisplay.classList.toggle('show',ganzhiEnabled);updateClock(); });
+weekToggle.addEventListener('click',()=>{ weekEnabled=!weekEnabled;weekTrack.classList.toggle('on',weekEnabled);const t=i18n[currentLang];weekToggle.querySelector('.toggle-label').textContent=weekEnabled?t.week_on:t.week_off;weekDisplay.classList.toggle('show',weekEnabled);updateClock(); });
+julianToggle.addEventListener('click',()=>{ julianEnabled=!julianEnabled;julianTrack.classList.toggle('on',julianEnabled);const t=i18n[currentLang];julianToggle.querySelector('.toggle-label').textContent=julianEnabled?t.julian_on:t.julian_off;julianDisplay.classList.toggle('show',julianEnabled);updateClock(); });
+doyToggle.addEventListener('click',()=>{ doyEnabled=!doyEnabled;doyTrack.classList.toggle('on',doyEnabled);const t=i18n[currentLang];doyToggle.querySelector('.toggle-label').textContent=doyEnabled?t.doy_on:t.doy_off;doyDisplay.classList.toggle('show',doyEnabled);updateClock(); });
+moonToggle.addEventListener('click',()=>{ moonEnabled=!moonEnabled;moonTrack.classList.toggle('on',moonEnabled);const t=i18n[currentLang];moonToggle.querySelector('.toggle-label').textContent=moonEnabled?t.moon_on:t.moon_off;moonDisplay.classList.toggle('show',moonEnabled);updateClock(); });
+sunToggle.addEventListener('click',()=>{ sunEnabled=!sunEnabled;sunTrack.classList.toggle('on',sunEnabled);const t=i18n[currentLang];sunToggle.querySelector('.toggle-label').textContent=sunEnabled?t.sun_on:t.sun_off;sunDisplay.classList.toggle('show',sunEnabled);updateClock(); });
+tzToggle.addEventListener('click',()=>{ tzDisplayEnabled=!tzDisplayEnabled;tzTrack.classList.toggle('on',tzDisplayEnabled);const t=i18n[currentLang];tzToggle.querySelector('.toggle-label').textContent=tzDisplayEnabled?t.tz_on:t.tz_off;tzDisplayEl.classList.toggle('show',tzDisplayEnabled);updateClock(); });
+secondsToggle.addEventListener('click',()=>{ secondsEnabled=!secondsEnabled;secondsTrack.classList.toggle('on',secondsEnabled);const t=i18n[currentLang];secondsToggle.querySelector('.toggle-label').textContent=secondsEnabled?t.seconds_on:t.seconds_off;updateClock(); });
+colonToggle.addEventListener('click',()=>{ colonEnabled=!colonEnabled;colonTrack.classList.toggle('on',colonEnabled);const t=i18n[currentLang];colonToggle.querySelector('.toggle-label').textContent=colonEnabled?t.colon_on:t.colon_off;updateClock(); });
+formatToggle.addEventListener('click',()=>{ format24h=!format24h;formatTrack.classList.toggle('on',format24h);const t=i18n[currentLang];formatToggle.querySelector('.toggle-label').textContent=format24h?t['24h_on']:t['24h_off'];updateClock(); });
+
+swToggle.addEventListener('click',()=>{
+    swEnabled=!swEnabled;swTrack.classList.toggle('on',swEnabled);const t=i18n[currentLang];swToggle.querySelector('.toggle-label').textContent=swEnabled?t.sw_on:t.sw_off;
+    swDisplay.classList.toggle('show',swEnabled);swControls.classList.toggle('show',swEnabled);
+    if(!swEnabled&&swRunning){ swRunning=false;clearInterval(swInterval); }
+});
+swStart.addEventListener('click',()=>{ if(!swRunning){ swRunning=true;swStartTime=Date.now()-swElapsed;swInterval=setInterval(()=>{swElapsed=Date.now()-swStartTime;updateStopwatch();},10); } });
+swStop.addEventListener('click',()=>{ if(swRunning){ swRunning=false;clearInterval(swInterval); } });
+swReset.addEventListener('click',()=>{ swRunning=false;clearInterval(swInterval);swElapsed=0;updateStopwatch(); });
+function updateStopwatch(){
+    const m=Math.floor(swElapsed/60000),s=Math.floor((swElapsed%60000)/1000),ms=Math.floor((swElapsed%1000)/10);
+    document.getElementById('swMin').textContent=String(m).padStart(2,'0');
+    document.getElementById('swSec').textContent=String(s).padStart(2,'0');
+    document.getElementById('swMs').textContent=String(ms).padStart(2,'0');
+}
+
+timerToggle.addEventListener('click',()=>{
+    timerEnabled=!timerEnabled;timerTrack.classList.toggle('on',timerEnabled);const t=i18n[currentLang];timerToggle.querySelector('.toggle-label').textContent=timerEnabled?t.timer_on:t.timer_off;
+    timerDisplay.classList.toggle('show',timerEnabled);timerControls.classList.toggle('show',timerEnabled);
+    if(!timerEnabled&&timerRunning){ timerRunning=false;clearInterval(timerInterval); }
+});
+tmStart.addEventListener('click',()=>{
+    if(!timerRunning){
+        const min=parseInt(document.getElementById('tmMinInput').value)||0,sec=parseInt(document.getElementById('tmSecInput').value)||0;
+        if(timerRemaining===0)timerRemaining=min*60+sec;
+        if(timerRemaining>0){ timerRunning=true;timerInterval=setInterval(()=>{timerRemaining--;if(timerRemaining<=0){timerRemaining=0;timerRunning=false;clearInterval(timerInterval);}updateTimer();},1000); }
+    }
+});
+tmPause.addEventListener('click',()=>{ if(timerRunning){ timerRunning=false;clearInterval(timerInterval); } });
+tmReset.addEventListener('click',()=>{ timerRunning=false;clearInterval(timerInterval);timerRemaining=0;updateTimer(); });
+function updateTimer(){
+    const m=Math.floor(timerRemaining/60),s=timerRemaining%60;
+    document.getElementById('tmMin').textContent=String(m).padStart(2,'0');
+    document.getElementById('tmSec').textContent=String(s).padStart(2,'0');
+}
+
+timezoneSelect.addEventListener('change',(e)=>{ selectedTimezone=e.target.value;updateClock(); });
+
+colorSelect.addEventListener('change',(e)=>{
+    accentColor=e.target.value;
+    const colorMap={black:'#111',red:'#c0392b',blue:'#2980b9',green:'#27ae60',orange:'#e67e22',purple:'#8e44ad'};
+    const c=colorMap[accentColor];
+    document.querySelectorAll('.time-section,.date-section').forEach(el=>el.style.color=c);
+    document.querySelectorAll('.menu-btn span').forEach(el=>el.style.backgroundColor=c);
+    document.querySelectorAll('.toggle-track.on').forEach(el=>el.style.backgroundColor=c);
+    document.querySelectorAll('.lang-btn.active').forEach(el=>{el.style.backgroundColor=c;el.style.borderColor=c;});
+    document.querySelectorAll('.sw-btn').forEach(el=>{el.style.borderColor=c;el.style.color=c;});
+    document.querySelectorAll('.sw-btn:hover').forEach(el=>{el.style.backgroundColor=c;el.style.color='#fff';});
+});
+
+fsToggle.addEventListener('click',()=>{
+    fsEnabled=!fsEnabled;fsTrack.classList.toggle('on',fsEnabled);const t=i18n[currentLang];fsToggle.querySelector('.toggle-label').textContent=fsEnabled?t.fs_on:t.fs_off;
+    if(fsEnabled){ document.documentElement.requestFullscreen().catch(()=>{}); }
+    else{ if(document.fullscreenElement)document.exitFullscreen().catch(()=>{}); }
+});
+document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement&&fsEnabled){ fsEnabled=false;fsTrack.classList.remove('on');const t=i18n[currentLang];fsToggle.querySelector('.toggle-label').textContent=t.fs_off; } });
+
+// ========== 时区处理（优化版）==========
+
+const timezoneCoords = {
+    'UTC': { lat: 51.5, lon: 0 },
+    'America/New_York': { lat: 40.7, lon: -74.0 },
+    'America/Los_Angeles': { lat: 34.1, lon: -118.2 },
+    'Europe/London': { lat: 51.5, lon: -0.1 },
+    'Europe/Paris': { lat: 48.9, lon: 2.3 },
+    'Europe/Berlin': { lat: 52.5, lon: 13.4 },
+    'Asia/Tokyo': { lat: 35.7, lon: 139.7 },
+    'Asia/Shanghai': { lat: 31.2, lon: 121.5 },
+    'Asia/Seoul': { lat: 37.6, lon: 127.0 },
+    'Asia/Dubai': { lat: 25.2, lon: 55.3 },
+    'Australia/Sydney': { lat: -33.9, lon: 151.2 },
+    'Pacific/Auckland': { lat: -36.8, lon: 174.7 }
+};
+
+// 获取目标时区的完整时间信息，返回一个"伪Date"对象
+// 它拥有和Date相同的 getter 方法，但所有值都基于目标时区
+function getTimeInTimezone(date, timezone) {
+    if (timezone === 'local') {
+        return date;
+    }
+    
+    // 使用 Intl 格式化目标时区的各个字段
+    const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+    });
+    
+    const parts = fmt.formatToParts(date);
+    const get = (t) => parseInt(parts.find(p => p.type === t).value, 10);
+    
+    const year = get('year');
+    const month = get('month') - 1;  // Date 的 month 是 0-based
+    const day = get('day');
+    const hour = get('hour');
+    const minute = get('minute');
+    const second = get('second');
+    
+    // 创建一个 Date 对象，其"本地时间"的数值恰好等于目标时区的数值
+    // 这样所有 getter（getFullYear, getMonth 等）返回的就是目标时区的值
+    const localDate = new Date(year, month, day, hour, minute, second);
+    
+    // 包装一下，防止误用 getTimezoneOffset() 等方法
+    return {
+        _year: year,
+        _month: month,
+        _day: day,
+        _hour: hour,
+        _minute: minute,
+        _second: second,
+        _timezone: timezone,
+        
+        getFullYear() { return this._year; },
+        getMonth() { return this._month; },
+        getDate() { return this._day; },
+        getDay() {
+            // 计算星期：Zeller 公式简化版
+            const y = this._year, m = this._month + 1, d = this._day;
+            const q = d;
+            const mm = m < 3 ? m + 12 : m;
+            const yy = m < 3 ? y - 1 : y;
+            const k = yy % 100;
+            const j = Math.floor(yy / 100);
+            const h = (q + Math.floor(13 * (mm + 1) / 5) + k + Math.floor(k / 4) + Math.floor(j / 4) + 5 * j) % 7;
+            return ((h + 5) % 7) + 1; // 调整为 0=周日, 1=周一...
+        },
+        getHours() { return this._hour; },
+        getMinutes() { return this._minute; },
+        getSeconds() { return this._second; },
+        getTime() { return date.getTime(); }, // 返回原始时间戳
+        
+        // 兼容需要 Date 对象的地方
+        valueOf() { return date.getTime(); }
+    };
+}
+
+// 获取时区缩写，更可靠的方式
+function getTimezoneAbbr(timezone) {
+    if (timezone === 'local') {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+    if (timezone === 'UTC') {
+        return 'UTC';
+    }
+    
+    try {
+        const now = new Date();
+        // 尝试获取短名称
+        const s = now.toLocaleTimeString('en-US', {
+            timeZone: timezone,
+            timeZoneName: 'short'
+        });
+        const parts = s.split(' ');
+        const abbr = parts[parts.length - 1];
+        
+        // 如果返回的是 GMT+XX 格式，尝试用 long 名称
+        if (abbr.startsWith('GMT')) {
+            const longS = now.toLocaleTimeString('en-US', {
+                timeZone: timezone,
+                timeZoneName: 'long'
+            });
+            const longParts = longS.split(' ');
+            // 返回 long 名称的最后几个词
+            return longParts.slice(-2).join(' ');
+        }
+        return abbr;
+    } catch (e) {
+        return timezone.split('/').pop().replace(/_/g, ' ');
+    }
+}
+
+// 获取日出日落用的经纬度
+function getCoordsForTimezone(timezone) {
+    if (timezone === 'local') {
+        // 尝试从浏览器时区推断大致位置
+        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return timezoneCoords[localTz] || { lat: 39.9, lon: 116.4 }; // fallback 北京
+    }
+    return timezoneCoords[timezone] || { lat: 39.9, lon: 116.4 };
+}
+
+function updateClock() {
+    const now = new Date();
+    const displayTime = getTimeInTimezone(now, selectedTimezone);
+    const t = i18n[currentLang];
+    
+    const year = displayTime.getFullYear();
+    const month = t.months[displayTime.getMonth()];
+    const date = String(displayTime.getDate()).padStart(2, '0');
+    const day = t.days[displayTime.getDay()];
+    
+    let hours = displayTime.getHours();
+    const minutes = String(displayTime.getMinutes()).padStart(2, '0');
+    const seconds = String(displayTime.getSeconds()).padStart(2, '0');
+    let ampm = '';
+    
+    if (!format24h) {
+        ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+    }
+    const hStr = String(hours).padStart(2, '0');
+    
+    document.getElementById('date').textContent = `${year} ${month} ${date} ${day}`;
+    
+    let timeHTML;
+    const sep = colonEnabled ? `<span class="colon">:</span>` : ':';
+    if (secondsEnabled) {
+        timeHTML = `${hStr}${sep}${minutes}${sep}${seconds}${ampm ? ' ' + ampm : ''}`;
+    } else {
+        timeHTML = `${hStr}${sep}${minutes}${ampm ? ' ' + ampm : ''}`;
+    }
+    document.getElementById('time').innerHTML = timeHTML;
+    document.getElementById('label').textContent = t.label;
+    
+    // ========== 补回缺失的信息显示 ==========
+    
+    if (ganzhiEnabled) {
+        const gYear = getGanzhiYear(year);
+        const gMonth = getGanzhiMonth(year, displayTime.getMonth() + 1);
+        const gDay = getGanzhiDay(displayTime);
+        const gHour = getGanzhiHour(displayTime.getHours());
+        const zodiac = getZodiac(year);
+        ganzhiDisplay.textContent = currentLang === 'zh'
+            ? `${gYear}年 ${gMonth}月 ${gDay}日 ${gHour}时 · ${zodiac}年`
+            : `${gYear} Year ${gMonth} Month ${gDay} Day ${gHour} Hour · ${zodiac} Year`;
+    }
+    
+    if (weekEnabled) {
+        const wn = getWeekNumber(displayTime);
+        weekDisplay.textContent = currentLang === 'zh' ? `第 ${wn} 周`
+            : currentLang === 'ja' ? `第 ${wn} 週`
+            : currentLang === 'ko' ? `제 ${wn} 주`
+            : `WEEK ${wn}`;
+    }
+    
+    if (julianEnabled) {
+        julianDisplay.textContent = `JD ${getJulianDay(displayTime)}`;
+    }
+    
+    if (doyEnabled) {
+        const doy = getDayOfYear(displayTime);
+        doyDisplay.textContent = currentLang === 'zh' ? `第 ${doy} 天`
+            : currentLang === 'ja' ? `${doy} 日目`
+            : currentLang === 'ko' ? `${doy} 일째`
+            : `DAY ${doy}`;
+    }
+    
+    if (moonEnabled) {
+        const mp = getMoonPhase(displayTime);
+        moonDisplay.textContent = currentLang === 'zh' ? moonPhasesZh[mp] : moonPhases[mp];
+    }
+    
+    if (sunEnabled) {
+        const coords = getCoordsForTimezone(selectedTimezone);
+        const sun = getSunriseSunset(coords.lat, coords.lon, now);
+        sunDisplay.textContent = currentLang === 'zh'
+            ? `日出 ${sun.rise} · 日落 ${sun.set}`
+            : `RISE ${sun.rise} · SET ${sun.set}`;
+    }
+    
+    if (tzDisplayEnabled) {
+        const tzName = selectedTimezone === 'local'
+            ? 'Local'
+            : selectedTimezone.split('/').pop().replace(/_/g, ' ');
+        tzDisplayEl.textContent = `${tzName} · ${getTimezoneAbbr(selectedTimezone)}`;
+    }
+}
+
+updateI18n();updateClock();
+setInterval(updateClock,1000);
+</script>
+</body>
+</html>

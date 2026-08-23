@@ -10,6 +10,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icons/icon-192.svg">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -288,6 +289,112 @@
             .date-section { font-size: 0.9rem; letter-spacing: 1px; }
             .menu-btn.active { left: 228px; }
         }
+                /* 日期格式按钮 */
+        .format-options { display: flex; gap: 6px; flex-wrap: wrap; }
+        .fmt-btn {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.65rem;
+            letter-spacing: 1px;
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            background: #fff;
+            color: #999;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            outline: none;
+        }
+        .fmt-btn:hover { border-color: #111; color: #111; }
+        .fmt-btn.active { border-color: #111; background-color: #111; color: #fff; }
+        
+        /* 字体大小滑块 */
+        .size-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            background: #ddd;
+            border-radius: 2px;
+            outline: none;
+        }
+        .size-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px; height: 16px;
+            background: #111;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .size-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.6rem;
+            color: #aaa;
+            margin-top: 4px;
+        }
+        
+        /* 主题切换 */
+        .theme-options { display: flex; gap: 8px; }
+        .theme-btn {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .theme-btn:hover { transform: scale(1.1); }
+        .theme-btn.active { border-color: #111; }
+        
+        /* 世界时钟 */
+        .world-clock-item {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            color: #666;
+            letter-spacing: 1px;
+            padding: 6px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .world-clock-item:last-child { border-bottom: none; }
+        .world-clock-time { font-weight: 700; color: #333; }
+        
+        /* 二维码 */
+        #qrcode { margin-top: 8px; }
+        
+        /* 暗色主题 */
+        body.dark {
+            background-color: #111;
+        }
+        body.dark .menu-btn span { background-color: #fff; }
+        body.dark .sidebar { background-color: #1a1a1a; border-right-color: #333; }
+        body.dark .sidebar-label { color: #666; }
+        body.dark .lang-btn { background: #1a1a1a; border-color: #444; color: #888; }
+        body.dark .lang-btn:hover { border-color: #fff; color: #fff; }
+        body.dark .lang-btn.active { background-color: #fff; border-color: #fff; color: #111; }
+        body.dark .toggle-track { background-color: #444; }
+        body.dark .toggle-track.on { background-color: #fff; }
+        body.dark .toggle-thumb { background-color: #111; }
+        body.dark .toggle-label { color: #ccc; }
+        body.dark .timezone-select, body.dark .color-select {
+            background: #1a1a1a; border-color: #444; color: #ccc;
+        }
+        body.dark .fmt-btn { background: #1a1a1a; border-color: #444; color: #888; }
+        body.dark .fmt-btn:hover { border-color: #fff; color: #fff; }
+        body.dark .fmt-btn.active { background-color: #fff; border-color: #fff; color: #111; }
+        body.dark .size-slider { background: #444; }
+        body.dark .size-slider::-webkit-slider-thumb { background: #fff; }
+        body.dark .size-labels { color: #666; }
+        body.dark .theme-btn.active { border-color: #fff; }
+        body.dark .world-clock-item { color: #888; border-bottom-color: #333; }
+        body.dark .world-clock-time { color: #fff; }
+        body.dark .date-section { color: #aaa; }
+        body.dark .time-section { color: #fff; }
+        body.dark .label { color: #666; }
+        body.dark .info-line { color: #888; }
+        body.dark .info-line.small { color: #666; }
+        body.dark .info-line.tiny { color: #555; }
+        body.dark .stopwatch-display, body.dark .timer-display { color: #fff; }
+        body.dark .sw-btn { border-color: #fff; color: #fff; background: transparent; }
+        body.dark .sw-btn:hover { background: #fff; color: #111; }
+        body.dark .timer-input { background: #1a1a1a; border-color: #444; color: #ccc; }
+        body.dark .timer-input:focus { border-color: #fff; }
     </style>
 </head>
 <body>
@@ -430,6 +537,59 @@
             <div class="toggle-row" id="fsToggle">
                 <div class="toggle-track" id="fsTrack"><div class="toggle-thumb"></div></div>
                 <span class="toggle-label" data-i18n="fs_off">OFF</span>
+            </div>
+        </div>
+                <div class="sidebar-section">
+            <div class="sidebar-label">Date Format</div>
+            <div class="format-options">
+                <button class="fmt-btn active" data-fmt="ymd">Y M D</button>
+                <button class="fmt-btn" data-fmt="mdy">M/D/Y</button>
+                <button class="fmt-btn" data-fmt="dmy">D.M.Y</button>
+                <button class="fmt-btn" data-fmt="iso">ISO</button>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Clock Size</div>
+            <input type="range" class="size-slider" id="sizeSlider" min="2" max="7" step="0.5" value="4.5">
+            <div class="size-labels"><span>S</span><span>M</span><span>L</span><span>XL</span></div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Theme</div>
+            <div class="theme-options">
+                <div class="theme-btn active" data-theme="light" style="background:#fff;border:1px solid #ddd;"></div>
+                <div class="theme-btn" data-theme="dark" style="background:#111;"></div>
+                <div class="theme-btn" data-theme="oled" style="background:#000;"></div>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">World Clock</div>
+            <div id="worldClockList"></div>
+            <select class="timezone-select" id="worldClockSelect" style="margin-top:8px;">
+                <option value="">+ Add City</option>
+                <option value="UTC">UTC</option>
+                <option value="America/New_York">New York</option>
+                <option value="America/Los_Angeles">Los Angeles</option>
+                <option value="Europe/London">London</option>
+                <option value="Europe/Paris">Paris</option>
+                <option value="Europe/Berlin">Berlin</option>
+                <option value="Asia/Tokyo">Tokyo</option>
+                <option value="Asia/Shanghai">Shanghai</option>
+                <option value="Asia/Seoul">Seoul</option>
+                <option value="Asia/Dubai">Dubai</option>
+                <option value="Australia/Sydney">Sydney</option>
+                <option value="Pacific/Auckland">Auckland</option>
+            </select>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Share</div>
+            <div id="qrcode"></div>
+        </div>
+        <div class="sidebar-section" style="margin-top:auto;padding-top:20px;border-top:1px solid #eee;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:0.85rem;color:#333;letter-spacing:2px;font-weight:500;">Time Display</div>
+            <div style="font-family:'Orbitron',sans-serif;font-size:0.75rem;color:#999;letter-spacing:1px;line-height:1.8;margin-top:8px;">
+                <div>By Laevatain</div>
+                <div>QQ群: 624442358</div>
+                <div>BiliBili: 3546558700194503</div>
             </div>
         </div>
     </div>
@@ -977,8 +1137,18 @@ function updateClock() {
     }
     const hStr = String(hours).padStart(2, '0');
     
-    document.getElementById('date').textContent = `${year} ${month} ${date} ${day}`;
-    
+        let dateStr;
+    if (dateFormat === 'ymd') {
+        dateStr = `${year} ${month} ${date} ${day}`;
+    } else if (dateFormat === 'mdy') {
+        dateStr = `${month} ${date}, ${year} ${day}`;
+    } else if (dateFormat === 'dmy') {
+        dateStr = `${date}.${month}.${year} ${day}`;
+    } else if (dateFormat === 'iso') {
+        dateStr = `${year}-${String(displayTime.getMonth()+1).padStart(2,'0')}-${date} ${day}`;
+    }
+    document.getElementById('date').textContent = dateStr;
+
     let timeHTML;
     const sep = colonEnabled ? `<span class="colon">:</span>` : ':';
     if (secondsEnabled) {
@@ -1044,6 +1214,92 @@ function updateClock() {
 }
 
 updateI18n();updateClock();
+// ========== 日期格式 ==========
+let dateFormat = 'ymd';
+document.querySelectorAll('.fmt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        dateFormat = btn.dataset.fmt;
+        updateClock();
+    });
+});
+
+// ========== 字体大小 ==========
+const sizeSlider = document.getElementById('sizeSlider');
+const timeSection = document.getElementById('time');
+const dateSection = document.getElementById('date');
+sizeSlider.addEventListener('input', (e) => {
+    const val = e.target.value;
+    timeSection.style.fontSize = val + 'rem';
+    dateSection.style.fontSize = (val * 0.4) + 'rem';
+});
+
+// ========== 主题切换 ==========
+document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const theme = btn.dataset.theme;
+        document.body.classList.remove('dark');
+        if (theme === 'dark') document.body.classList.add('dark');
+        if (theme === 'oled') { document.body.classList.add('dark'); document.body.style.backgroundColor = '#000'; }
+        else { document.body.style.backgroundColor = ''; }
+    });
+});
+
+// ========== 世界时钟 ==========
+let worldClocks = [];
+const worldClockSelect = document.getElementById('worldClockSelect');
+const worldClockList = document.getElementById('worldClockList');
+
+function updateWorldClocks() {
+    worldClockList.innerHTML = '';
+    worldClocks.forEach((tz, idx) => {
+        const now = new Date();
+        const fmt = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: !format24h
+        });
+        const timeStr = fmt.format(now);
+        const city = tz.split('/').pop().replace(/_/g, ' ');
+        const div = document.createElement('div');
+        div.className = 'world-clock-item';
+        div.innerHTML = `<span>${city}</span> <span class="world-clock-time">${timeStr}</span> <span style="cursor:pointer;color:#c0392b;margin-left:4px;" onclick="removeWorldClock(${idx})">×</span>`;
+        worldClockList.appendChild(div);
+    });
+}
+function removeWorldClock(idx) {
+    worldClocks.splice(idx, 1);
+    updateWorldClocks();
+}
+worldClockSelect.addEventListener('change', (e) => {
+    const tz = e.target.value;
+    if (tz && !worldClocks.includes(tz)) {
+        worldClocks.push(tz);
+        updateWorldClocks();
+    }
+    worldClockSelect.value = '';
+});
+setInterval(updateWorldClocks, 1000);
+
+// ========== 点击复制时间 ==========
+document.querySelector('.clock-container').addEventListener('click', () => {
+    const text = document.getElementById('time').textContent.replace(/:/g, ':').trim();
+    navigator.clipboard.writeText(text).catch(() => {});
+});
+
+// ========== 二维码 ==========
+function generateQR() {
+    const url = window.location.href;
+    const qr = document.getElementById('qrcode');
+    // 使用 QRCode.js CDN 或简单用 API
+    qr.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(url)}" style="width:100px;height:100px;border:1px solid #ddd;">`;
+}
+generateQR();
 setInterval(updateClock,1000);
 </script>
 </body>

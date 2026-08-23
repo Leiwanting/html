@@ -151,6 +151,7 @@
             padding: 40px 20px;
             width: 100%;
             max-width: 900px;
+            cursor: pointer;
         }
         .date-section {
             font-size: 1.8rem;
@@ -272,24 +273,8 @@
             outline: none;
         }
         .timer-input:focus { border-color: #111; }
-        @media (max-width: 600px) {
-            .time-section { font-size: 2.8rem; letter-spacing: 3px; }
-            .date-section { font-size: 1.1rem; letter-spacing: 2px; }
-            .label { font-size: 0.6rem; letter-spacing: 1px; }
-            .info-line { font-size: 0.85rem; letter-spacing: 2px; }
-            .info-line.small { font-size: 0.75rem; }
-            .info-line.tiny { font-size: 0.65rem; }
-            .stopwatch-display, .timer-display { font-size: 2.2rem; }
-            .menu-btn { top: 16px; left: 16px; width: 28px; height: 20px; }
-            .menu-btn.active { left: 228px; }
-            .clock-container { padding: 20px 12px; }
-        }
-        @media (max-width: 380px) {
-            .time-section { font-size: 2.2rem; letter-spacing: 2px; }
-            .date-section { font-size: 0.9rem; letter-spacing: 1px; }
-            .menu-btn.active { left: 228px; }
-        }
-                /* 日期格式按钮 */
+
+        /* ===== 新增功能样式 ===== */
         .format-options { display: flex; gap: 6px; flex-wrap: wrap; }
         .fmt-btn {
             font-family: 'Orbitron', sans-serif;
@@ -305,8 +290,6 @@
         }
         .fmt-btn:hover { border-color: #111; color: #111; }
         .fmt-btn.active { border-color: #111; background-color: #111; color: #fff; }
-        
-        /* 字体大小滑块 */
         .size-slider {
             -webkit-appearance: none;
             appearance: none;
@@ -330,8 +313,6 @@
             color: #aaa;
             margin-top: 4px;
         }
-        
-        /* 主题切换 */
         .theme-options { display: flex; gap: 8px; }
         .theme-btn {
             width: 28px; height: 28px;
@@ -342,8 +323,6 @@
         }
         .theme-btn:hover { transform: scale(1.1); }
         .theme-btn.active { border-color: #111; }
-        
-        /* 世界时钟 */
         .world-clock-item {
             font-family: 'Orbitron', sans-serif;
             font-size: 0.75rem;
@@ -351,13 +330,22 @@
             letter-spacing: 1px;
             padding: 6px 0;
             border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .world-clock-item:last-child { border-bottom: none; }
         .world-clock-time { font-weight: 700; color: #333; }
-        
-        /* 二维码 */
+        .world-clock-del {
+            cursor: pointer;
+            color: #c0392b;
+            font-size: 1rem;
+            margin-left: 8px;
+            line-height: 1;
+        }
         #qrcode { margin-top: 8px; }
-        
+        #qrcode img { width: 100px; height: 100px; }
+
         /* 暗色主题 */
         body.dark {
             background-color: #111;
@@ -395,6 +383,24 @@
         body.dark .sw-btn:hover { background: #fff; color: #111; }
         body.dark .timer-input { background: #1a1a1a; border-color: #444; color: #ccc; }
         body.dark .timer-input:focus { border-color: #fff; }
+
+        @media (max-width: 600px) {
+            .time-section { font-size: 2.8rem; letter-spacing: 3px; }
+            .date-section { font-size: 1.1rem; letter-spacing: 2px; }
+            .label { font-size: 0.6rem; letter-spacing: 1px; }
+            .info-line { font-size: 0.85rem; letter-spacing: 2px; }
+            .info-line.small { font-size: 0.75rem; }
+            .info-line.tiny { font-size: 0.65rem; }
+            .stopwatch-display, .timer-display { font-size: 2.2rem; }
+            .menu-btn { top: 16px; left: 16px; width: 28px; height: 20px; }
+            .menu-btn.active { left: 228px; }
+            .clock-container { padding: 20px 12px; }
+        }
+        @media (max-width: 380px) {
+            .time-section { font-size: 2.2rem; letter-spacing: 2px; }
+            .date-section { font-size: 0.9rem; letter-spacing: 1px; }
+            .menu-btn.active { left: 228px; }
+        }
     </style>
 </head>
 <body>
@@ -539,8 +545,10 @@
                 <span class="toggle-label" data-i18n="fs_off">OFF</span>
             </div>
         </div>
-                <div class="sidebar-section">
-            <div class="sidebar-label">Date Format</div>
+
+        <!-- ===== 新增功能：日期格式 ===== -->
+        <div class="sidebar-section">
+            <div class="sidebar-label" data-i18n="fmt_label">Date Format</div>
             <div class="format-options">
                 <button class="fmt-btn active" data-fmt="ymd">Y M D</button>
                 <button class="fmt-btn" data-fmt="mdy">M/D/Y</button>
@@ -548,24 +556,30 @@
                 <button class="fmt-btn" data-fmt="iso">ISO</button>
             </div>
         </div>
+
+        <!-- ===== 新增功能：字体大小 ===== -->
         <div class="sidebar-section">
-            <div class="sidebar-label">Clock Size</div>
+            <div class="sidebar-label" data-i18n="size_label">Clock Size</div>
             <input type="range" class="size-slider" id="sizeSlider" min="2" max="7" step="0.5" value="4.5">
             <div class="size-labels"><span>S</span><span>M</span><span>L</span><span>XL</span></div>
         </div>
+
+        <!-- ===== 新增功能：主题切换 ===== -->
         <div class="sidebar-section">
-            <div class="sidebar-label">Theme</div>
+            <div class="sidebar-label" data-i18n="theme_label">Theme</div>
             <div class="theme-options">
                 <div class="theme-btn active" data-theme="light" style="background:#fff;border:1px solid #ddd;"></div>
                 <div class="theme-btn" data-theme="dark" style="background:#111;"></div>
                 <div class="theme-btn" data-theme="oled" style="background:#000;"></div>
             </div>
         </div>
+
+        <!-- ===== 新增功能：世界时钟 ===== -->
         <div class="sidebar-section">
-            <div class="sidebar-label">World Clock</div>
+            <div class="sidebar-label" data-i18n="world_label">World Clock</div>
             <div id="worldClockList"></div>
             <select class="timezone-select" id="worldClockSelect" style="margin-top:8px;">
-                <option value="">+ Add City</option>
+                <option value="" data-i18n="add_city">+ Add City</option>
                 <option value="UTC">UTC</option>
                 <option value="America/New_York">New York</option>
                 <option value="America/Los_Angeles">Los Angeles</option>
@@ -580,10 +594,14 @@
                 <option value="Pacific/Auckland">Auckland</option>
             </select>
         </div>
+
+        <!-- ===== 新增功能：二维码分享 ===== -->
         <div class="sidebar-section">
-            <div class="sidebar-label">Share</div>
+            <div class="sidebar-label" data-i18n="share_label">Share</div>
             <div id="qrcode"></div>
         </div>
+
+        <!-- ===== 作者信息 ===== -->
         <div class="sidebar-section" style="margin-top:auto;padding-top:20px;border-top:1px solid #eee;">
             <div style="font-family:'Orbitron',sans-serif;font-size:0.85rem;color:#333;letter-spacing:2px;font-weight:500;">Time Display</div>
             <div style="font-family:'Orbitron',sans-serif;font-size:0.75rem;color:#999;letter-spacing:1px;line-height:1.8;margin-top:8px;">
@@ -593,7 +611,8 @@
             </div>
         </div>
     </div>
-    <div class="clock-container">
+
+    <div class="clock-container" id="clockContainer">
         <div class="date-section" id="date"></div>
         <div class="time-section" id="time"></div>
         <div class="label" id="label"></div>
@@ -625,7 +644,7 @@
     </div>
 
 <script>
-    if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js')
       .then(reg => console.log('[PWA] SW registered:', reg.scope))
@@ -698,6 +717,8 @@ const i18n={
         stopwatch_label:'Stopwatch',sw_off:'OFF',sw_on:'ON',
         timer_label:'Countdown Timer',timer_off:'OFF',timer_on:'ON',
         color_label:'Accent Color',fullscreen_label:'Fullscreen',fs_off:'OFF',fs_on:'ON',
+        fmt_label:'Date Format',size_label:'Clock Size',theme_label:'Theme',
+        world_label:'World Clock',add_city:'+ Add City',share_label:'Share',
         label:'Year / Month / Date / Day / Hour / Minute / Second',
         months:['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'],
         days:['SUN','MON','TUE','WED','THU','FRI','SAT']
@@ -716,6 +737,8 @@ const i18n={
         stopwatch_label:'秒表',sw_off:'关闭',sw_on:'开启',
         timer_label:'倒计时',timer_off:'关闭',timer_on:'开启',
         color_label:'强调色',fullscreen_label:'全屏',fs_off:'关闭',fs_on:'开启',
+        fmt_label:'日期格式',size_label:'时钟大小',theme_label:'主题',
+        world_label:'世界时钟',add_city:'+ 添加城市',share_label:'分享',
         label:'年 / 月 / 日 / 星期 / 时 / 分 / 秒',
         months:['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
         days:['周日','周一','周二','周三','周四','周五','周六']
@@ -734,6 +757,8 @@ const i18n={
         stopwatch_label:'ストップウォッチ',sw_off:'OFF',sw_on:'ON',
         timer_label:'タイマー',timer_off:'OFF',timer_on:'ON',
         color_label:'アクセント色',fullscreen_label:'全画面',fs_off:'OFF',fs_on:'ON',
+        fmt_label:'日付形式',size_label:'時計サイズ',theme_label:'テーマ',
+        world_label:'世界時計',add_city:'+ 都市追加',share_label:'共有',
         label:'年 / 月 / 日 / 曜日 / 時 / 分 / 秒',
         months:['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
         days:['日','月','火','水','木','金','土']
@@ -752,6 +777,8 @@ const i18n={
         stopwatch_label:'스톱워치',sw_off:'OFF',sw_on:'ON',
         timer_label:'타이머',timer_off:'OFF',timer_on:'ON',
         color_label:'강조색',fullscreen_label:'전체화면',fs_off:'OFF',fs_on:'ON',
+        fmt_label:'날짜 형식',size_label:'시계 크기',theme_label:'테마',
+        world_label:'세계 시계',add_city:'+ 도시 추가',share_label:'공유',
         label:'년 / 월 / 일 / 요일 / 시 / 분 / 초',
         months:['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
         days:['일','월','화','수','목','금','토']
@@ -770,6 +797,8 @@ const i18n={
         stopwatch_label:'Chronometre',sw_off:'OFF',sw_on:'ON',
         timer_label:'Minuteur',timer_off:'OFF',timer_on:'ON',
         color_label:'Couleur Accent',fullscreen_label:'Plein Ecran',fs_off:'OFF',fs_on:'ON',
+        fmt_label:'Format Date',size_label:'Taille Horloge',theme_label:'Theme',
+        world_label:'Horloge Mondiale',add_city:'+ Ajouter',share_label:'Partager',
         label:'Annee / Mois / Date / Jour / Heure / Minute / Seconde',
         months:['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'],
         days:['DIM','LUN','MAR','MER','JEU','VEN','SAM']
@@ -788,6 +817,8 @@ const i18n={
         stopwatch_label:'Stoppuhr',sw_off:'AUS',sw_on:'AN',
         timer_label:'Timer',timer_off:'AUS',timer_on:'AN',
         color_label:'Akzentfarbe',fullscreen_label:'Vollbild',fs_off:'AUS',fs_on:'AN',
+        fmt_label:'Datumsformat',size_label:'Uhr Groesse',theme_label:'Thema',
+        world_label:'Weltuhr',add_city:'+ Stadt',share_label:'Teilen',
         label:'Jahr / Monat / Datum / Tag / Stunde / Minute / Sekunde',
         months:['JAN','FEB','MAR','APR','MAI','JUN','JUL','AUG','SEP','OKT','NOV','DEZ'],
         days:['SO','MO','DI','MI','DO','FR','SA']
@@ -806,6 +837,8 @@ const i18n={
         stopwatch_label:'Cronometro',sw_off:'OFF',sw_on:'ON',
         timer_label:'Temporizador',timer_off:'OFF',timer_on:'ON',
         color_label:'Color Acento',fullscreen_label:'Pantalla Completa',fs_off:'OFF',fs_on:'ON',
+        fmt_label:'Formato Fecha',size_label:'Tamano Reloj',theme_label:'Tema',
+        world_label:'Reloj Mundial',add_city:'+ Ciudad',share_label:'Compartir',
         label:'Ano / Mes / Fecha / Dia / Hora / Minuto / Segundo',
         months:['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'],
         days:['DOM','LUN','MAR','MIE','JUE','VIE','SAB']
@@ -824,6 +857,8 @@ const i18n={
         stopwatch_label:'Секундомер',sw_off:'ВЫКЛ',sw_on:'ВКЛ',
         timer_label:'Таймер',timer_off:'ВЫКЛ',timer_on:'ВКЛ',
         color_label:'Цвет Акцента',fullscreen_label:'Полный Экран',fs_off:'ВЫКЛ',fs_on:'ВКЛ',
+        fmt_label:'Формат Даты',size_label:'Размер Часов',theme_label:'Тема',
+        world_label:'Мировые Часы',add_city:'+ Город',share_label:'Поделиться',
         label:'Год / Месяц / Дата / День / Час / Минута / Секунда',
         months:['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'],
         days:['ВС','ПН','ВТ','СР','ЧТ','ПТ','СБ']
@@ -842,6 +877,8 @@ const i18n={
         stopwatch_label:'ساعة التوقيف',sw_off:'إيقاف',sw_on:'تشغيل',
         timer_label:'المؤقت',timer_off:'إيقاف',timer_on:'تشغيل',
         color_label:'لون التمييز',fullscreen_label:'ملء الشاشة',fs_off:'إيقاف',fs_on:'تشغيل',
+        fmt_label:'تنسيق التاريخ',size_label:'حجم الساعة',theme_label:'السمة',
+        world_label:'ساعة العالم',add_city:'+ مدينة',share_label:'مشاركة',
         label:'سنة / شهر / تاريخ / يوم / ساعة / دقيقة / ثانية',
         months:['ينا','فبر','مار','أبر','ماي','يون','يول','أغس','سبت','أكت','نوف','ديس'],
         days:['أح','إث','ثل','أر','خم','جم','سب']
@@ -854,6 +891,8 @@ let format24h=true,swEnabled=false,timerEnabled=false,fsEnabled=false;
 let selectedTimezone='local',accentColor='black';
 let swRunning=false,swStartTime=0,swElapsed=0,swInterval=null;
 let timerRunning=false,timerRemaining=0,timerInterval=null;
+let dateFormat='ymd';
+let worldClocks=[];
 
 const menuBtn=document.getElementById('menuBtn'),sidebar=document.getElementById('sidebar'),sidebarOverlay=document.getElementById('sidebarOverlay');
 const ganzhiToggle=document.getElementById('ganzhiToggle'),ganzhiTrack=document.getElementById('ganzhiTrack'),ganzhiDisplay=document.getElementById('ganzhi');
@@ -875,6 +914,9 @@ const timerDisplay=document.getElementById('timerDisplay'),timerControls=documen
 const tmStart=document.getElementById('tmStart'),tmPause=document.getElementById('tmPause'),tmReset=document.getElementById('tmReset');
 const colorSelect=document.getElementById('colorSelect');
 const fsToggle=document.getElementById('fsToggle'),fsTrack=document.getElementById('fsTrack');
+const sizeSlider=document.getElementById('sizeSlider');
+const worldClockSelect=document.getElementById('worldClockSelect');
+const worldClockList=document.getElementById('worldClockList');
 
 function openSidebar(){ 
     menuBtn.classList.add('active');
@@ -898,7 +940,7 @@ document.querySelectorAll('.lang-btn').forEach(btn=>{
     btn.addEventListener('click',()=>{
         document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
         btn.classList.add('active');currentLang=btn.dataset.lang;
-        updateI18n();updateClock();
+        updateI18n();updateClock();updateWorldClocks();
     });
 });
 
@@ -929,7 +971,7 @@ sunToggle.addEventListener('click',()=>{ sunEnabled=!sunEnabled;sunTrack.classLi
 tzToggle.addEventListener('click',()=>{ tzDisplayEnabled=!tzDisplayEnabled;tzTrack.classList.toggle('on',tzDisplayEnabled);const t=i18n[currentLang];tzToggle.querySelector('.toggle-label').textContent=tzDisplayEnabled?t.tz_on:t.tz_off;tzDisplayEl.classList.toggle('show',tzDisplayEnabled);updateClock(); });
 secondsToggle.addEventListener('click',()=>{ secondsEnabled=!secondsEnabled;secondsTrack.classList.toggle('on',secondsEnabled);const t=i18n[currentLang];secondsToggle.querySelector('.toggle-label').textContent=secondsEnabled?t.seconds_on:t.seconds_off;updateClock(); });
 colonToggle.addEventListener('click',()=>{ colonEnabled=!colonEnabled;colonTrack.classList.toggle('on',colonEnabled);const t=i18n[currentLang];colonToggle.querySelector('.toggle-label').textContent=colonEnabled?t.colon_on:t.colon_off;updateClock(); });
-formatToggle.addEventListener('click',()=>{ format24h=!format24h;formatTrack.classList.toggle('on',format24h);const t=i18n[currentLang];formatToggle.querySelector('.toggle-label').textContent=format24h?t['24h_on']:t['24h_off'];updateClock(); });
+formatToggle.addEventListener('click',()=>{ format24h=!format24h;formatTrack.classList.toggle('on',format24h);const t=i18n[currentLang];formatToggle.querySelector('.toggle-label').textContent=format24h?t['24h_on']:t['24h_off'];updateClock();updateWorldClocks(); });
 
 swToggle.addEventListener('click',()=>{
     swEnabled=!swEnabled;swTrack.classList.toggle('on',swEnabled);const t=i18n[currentLang];swToggle.querySelector('.toggle-label').textContent=swEnabled?t.sw_on:t.sw_off;
@@ -977,7 +1019,6 @@ colorSelect.addEventListener('change',(e)=>{
     document.querySelectorAll('.toggle-track.on').forEach(el=>el.style.backgroundColor=c);
     document.querySelectorAll('.lang-btn.active').forEach(el=>{el.style.backgroundColor=c;el.style.borderColor=c;});
     document.querySelectorAll('.sw-btn').forEach(el=>{el.style.borderColor=c;el.style.color=c;});
-    document.querySelectorAll('.sw-btn:hover').forEach(el=>{el.style.backgroundColor=c;el.style.color='#fff';});
 });
 
 fsToggle.addEventListener('click',()=>{
@@ -986,6 +1027,98 @@ fsToggle.addEventListener('click',()=>{
     else{ if(document.fullscreenElement)document.exitFullscreen().catch(()=>{}); }
 });
 document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement&&fsEnabled){ fsEnabled=false;fsTrack.classList.remove('on');const t=i18n[currentLang];fsToggle.querySelector('.toggle-label').textContent=t.fs_off; } });
+
+// ========== 日期格式 ==========
+document.querySelectorAll('.fmt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        dateFormat = btn.dataset.fmt;
+        updateClock();
+    });
+});
+
+// ========== 字体大小 ==========
+sizeSlider.addEventListener('input', (e) => {
+    const val = e.target.value;
+    document.getElementById('time').style.fontSize = val + 'rem';
+    document.getElementById('date').style.fontSize = (val * 0.4) + 'rem';
+});
+
+// ========== 主题切换 ==========
+document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const theme = btn.dataset.theme;
+        document.body.classList.remove('dark');
+        if (theme === 'dark') document.body.classList.add('dark');
+        if (theme === 'oled') { document.body.classList.add('dark'); document.body.style.backgroundColor = '#000'; }
+        else { document.body.style.backgroundColor = ''; }
+    });
+});
+
+// ========== 世界时钟 ==========
+function updateWorldClocks() {
+    worldClockList.innerHTML = '';
+    worldClocks.forEach((tz, idx) => {
+        const now = new Date();
+        const fmt = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: !format24h
+        });
+        const timeStr = fmt.format(now);
+        const city = tz.split('/').pop().replace(/_/g, ' ');
+        const div = document.createElement('div');
+        div.className = 'world-clock-item';
+        div.innerHTML = `<span>${city}</span><span><span class="world-clock-time">${timeStr}</span><span class="world-clock-del" data-idx="${idx}">×</span></span>`;
+        worldClockList.appendChild(div);
+    });
+    document.querySelectorAll('.world-clock-del').forEach(del => {
+        del.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = parseInt(e.target.dataset.idx);
+            worldClocks.splice(idx, 1);
+            updateWorldClocks();
+        });
+    });
+}
+worldClockSelect.addEventListener('change', (e) => {
+    const tz = e.target.value;
+    if (tz && !worldClocks.includes(tz)) {
+        worldClocks.push(tz);
+        updateWorldClocks();
+    }
+    worldClockSelect.value = '';
+});
+
+// ========== 点击复制时间 ==========
+document.querySelector('.clock-container').addEventListener('click', () => {
+    const text = document.getElementById('time').textContent.trim();
+    navigator.clipboard.writeText(text).catch(() => {});
+});
+
+// ========== 二维码 ==========
+function generateQR() {
+    const qr = document.getElementById('qrcode');
+    qr.innerHTML = '';
+    const url = window.location.href;
+    try {
+        new QRCode(qr, {
+            text: url,
+            width: 100,
+            height: 100,
+            colorDark: document.body.classList.contains('dark') ? '#ffffff' : '#000000',
+            colorLight: document.body.classList.contains('dark') ? '#000000' : '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    } catch(e) {
+        qr.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(url)}" style="width:100px;height:100px;">`;
+    }
+}
 
 // ========== 时区处理（优化版）==========
 
@@ -1004,14 +1137,10 @@ const timezoneCoords = {
     'Pacific/Auckland': { lat: -36.8, lon: 174.7 }
 };
 
-// 获取目标时区的完整时间信息，返回一个"伪Date"对象
-// 它拥有和Date相同的 getter 方法，但所有值都基于目标时区
 function getTimeInTimezone(date, timezone) {
     if (timezone === 'local') {
         return date;
     }
-    
-    // 使用 Intl 格式化目标时区的各个字段
     const fmt = new Intl.DateTimeFormat('en-US', {
         timeZone: timezone,
         year: 'numeric',
@@ -1022,22 +1151,14 @@ function getTimeInTimezone(date, timezone) {
         second: 'numeric',
         hour12: false
     });
-    
     const parts = fmt.formatToParts(date);
     const get = (t) => parseInt(parts.find(p => p.type === t).value, 10);
-    
     const year = get('year');
-    const month = get('month') - 1;  // Date 的 month 是 0-based
+    const month = get('month') - 1;
     const day = get('day');
     const hour = get('hour');
     const minute = get('minute');
     const second = get('second');
-    
-    // 创建一个 Date 对象，其"本地时间"的数值恰好等于目标时区的数值
-    // 这样所有 getter（getFullYear, getMonth 等）返回的就是目标时区的值
-    const localDate = new Date(year, month, day, hour, minute, second);
-    
-    // 包装一下，防止误用 getTimezoneOffset() 等方法
     return {
         _year: year,
         _month: month,
@@ -1046,12 +1167,10 @@ function getTimeInTimezone(date, timezone) {
         _minute: minute,
         _second: second,
         _timezone: timezone,
-        
         getFullYear() { return this._year; },
         getMonth() { return this._month; },
         getDate() { return this._day; },
         getDay() {
-            // 计算星期：Zeller 公式简化版
             const y = this._year, m = this._month + 1, d = this._day;
             const q = d;
             const mm = m < 3 ? m + 12 : m;
@@ -1059,19 +1178,16 @@ function getTimeInTimezone(date, timezone) {
             const k = yy % 100;
             const j = Math.floor(yy / 100);
             const h = (q + Math.floor(13 * (mm + 1) / 5) + k + Math.floor(k / 4) + Math.floor(j / 4) + 5 * j) % 7;
-            return ((h + 5) % 7) + 1; // 调整为 0=周日, 1=周一...
+            return ((h + 5) % 7) + 1;
         },
         getHours() { return this._hour; },
         getMinutes() { return this._minute; },
         getSeconds() { return this._second; },
-        getTime() { return date.getTime(); }, // 返回原始时间戳
-        
-        // 兼容需要 Date 对象的地方
+        getTime() { return date.getTime(); },
         valueOf() { return date.getTime(); }
     };
 }
 
-// 获取时区缩写，更可靠的方式
 function getTimezoneAbbr(timezone) {
     if (timezone === 'local') {
         return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1079,25 +1195,20 @@ function getTimezoneAbbr(timezone) {
     if (timezone === 'UTC') {
         return 'UTC';
     }
-    
     try {
         const now = new Date();
-        // 尝试获取短名称
         const s = now.toLocaleTimeString('en-US', {
             timeZone: timezone,
             timeZoneName: 'short'
         });
         const parts = s.split(' ');
         const abbr = parts[parts.length - 1];
-        
-        // 如果返回的是 GMT+XX 格式，尝试用 long 名称
         if (abbr.startsWith('GMT')) {
             const longS = now.toLocaleTimeString('en-US', {
                 timeZone: timezone,
                 timeZoneName: 'long'
             });
             const longParts = longS.split(' ');
-            // 返回 long 名称的最后几个词
             return longParts.slice(-2).join(' ');
         }
         return abbr;
@@ -1106,12 +1217,10 @@ function getTimezoneAbbr(timezone) {
     }
 }
 
-// 获取日出日落用的经纬度
 function getCoordsForTimezone(timezone) {
     if (timezone === 'local') {
-        // 尝试从浏览器时区推断大致位置
         const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        return timezoneCoords[localTz] || { lat: 39.9, lon: 116.4 }; // fallback 北京
+        return timezoneCoords[localTz] || { lat: 39.9, lon: 116.4 };
     }
     return timezoneCoords[timezone] || { lat: 39.9, lon: 116.4 };
 }
@@ -1120,24 +1229,24 @@ function updateClock() {
     const now = new Date();
     const displayTime = getTimeInTimezone(now, selectedTimezone);
     const t = i18n[currentLang];
-    
+
     const year = displayTime.getFullYear();
     const month = t.months[displayTime.getMonth()];
     const date = String(displayTime.getDate()).padStart(2, '0');
     const day = t.days[displayTime.getDay()];
-    
+
     let hours = displayTime.getHours();
     const minutes = String(displayTime.getMinutes()).padStart(2, '0');
     const seconds = String(displayTime.getSeconds()).padStart(2, '0');
     let ampm = '';
-    
+
     if (!format24h) {
         ampm = hours >= 12 ? 'PM' : 'AM';
         hours = hours % 12 || 12;
     }
     const hStr = String(hours).padStart(2, '0');
-    
-        let dateStr;
+
+    let dateStr;
     if (dateFormat === 'ymd') {
         dateStr = `${year} ${month} ${date} ${day}`;
     } else if (dateFormat === 'mdy') {
@@ -1158,9 +1267,7 @@ function updateClock() {
     }
     document.getElementById('time').innerHTML = timeHTML;
     document.getElementById('label').textContent = t.label;
-    
-    // ========== 补回缺失的信息显示 ==========
-    
+
     if (ganzhiEnabled) {
         const gYear = getGanzhiYear(year);
         const gMonth = getGanzhiMonth(year, displayTime.getMonth() + 1);
@@ -1171,7 +1278,7 @@ function updateClock() {
             ? `${gYear}年 ${gMonth}月 ${gDay}日 ${gHour}时 · ${zodiac}年`
             : `${gYear} Year ${gMonth} Month ${gDay} Day ${gHour} Hour · ${zodiac} Year`;
     }
-    
+
     if (weekEnabled) {
         const wn = getWeekNumber(displayTime);
         weekDisplay.textContent = currentLang === 'zh' ? `第 ${wn} 周`
@@ -1179,11 +1286,11 @@ function updateClock() {
             : currentLang === 'ko' ? `제 ${wn} 주`
             : `WEEK ${wn}`;
     }
-    
+
     if (julianEnabled) {
         julianDisplay.textContent = `JD ${getJulianDay(displayTime)}`;
     }
-    
+
     if (doyEnabled) {
         const doy = getDayOfYear(displayTime);
         doyDisplay.textContent = currentLang === 'zh' ? `第 ${doy} 天`
@@ -1191,12 +1298,12 @@ function updateClock() {
             : currentLang === 'ko' ? `${doy} 일째`
             : `DAY ${doy}`;
     }
-    
+
     if (moonEnabled) {
         const mp = getMoonPhase(displayTime);
         moonDisplay.textContent = currentLang === 'zh' ? moonPhasesZh[mp] : moonPhases[mp];
     }
-    
+
     if (sunEnabled) {
         const coords = getCoordsForTimezone(selectedTimezone);
         const sun = getSunriseSunset(coords.lat, coords.lon, now);
@@ -1204,7 +1311,7 @@ function updateClock() {
             ? `日出 ${sun.rise} · 日落 ${sun.set}`
             : `RISE ${sun.rise} · SET ${sun.set}`;
     }
-    
+
     if (tzDisplayEnabled) {
         const tzName = selectedTimezone === 'local'
             ? 'Local'
@@ -1213,94 +1320,11 @@ function updateClock() {
     }
 }
 
-updateI18n();updateClock();
-// ========== 日期格式 ==========
-let dateFormat = 'ymd';
-document.querySelectorAll('.fmt-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        dateFormat = btn.dataset.fmt;
-        updateClock();
-    });
-});
-
-// ========== 字体大小 ==========
-const sizeSlider = document.getElementById('sizeSlider');
-const timeSection = document.getElementById('time');
-const dateSection = document.getElementById('date');
-sizeSlider.addEventListener('input', (e) => {
-    const val = e.target.value;
-    timeSection.style.fontSize = val + 'rem';
-    dateSection.style.fontSize = (val * 0.4) + 'rem';
-});
-
-// ========== 主题切换 ==========
-document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const theme = btn.dataset.theme;
-        document.body.classList.remove('dark');
-        if (theme === 'dark') document.body.classList.add('dark');
-        if (theme === 'oled') { document.body.classList.add('dark'); document.body.style.backgroundColor = '#000'; }
-        else { document.body.style.backgroundColor = ''; }
-    });
-});
-
-// ========== 世界时钟 ==========
-let worldClocks = [];
-const worldClockSelect = document.getElementById('worldClockSelect');
-const worldClockList = document.getElementById('worldClockList');
-
-function updateWorldClocks() {
-    worldClockList.innerHTML = '';
-    worldClocks.forEach((tz, idx) => {
-        const now = new Date();
-        const fmt = new Intl.DateTimeFormat('en-US', {
-            timeZone: tz,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: !format24h
-        });
-        const timeStr = fmt.format(now);
-        const city = tz.split('/').pop().replace(/_/g, ' ');
-        const div = document.createElement('div');
-        div.className = 'world-clock-item';
-        div.innerHTML = `<span>${city}</span> <span class="world-clock-time">${timeStr}</span> <span style="cursor:pointer;color:#c0392b;margin-left:4px;" onclick="removeWorldClock(${idx})">×</span>`;
-        worldClockList.appendChild(div);
-    });
-}
-function removeWorldClock(idx) {
-    worldClocks.splice(idx, 1);
-    updateWorldClocks();
-}
-worldClockSelect.addEventListener('change', (e) => {
-    const tz = e.target.value;
-    if (tz && !worldClocks.includes(tz)) {
-        worldClocks.push(tz);
-        updateWorldClocks();
-    }
-    worldClockSelect.value = '';
-});
-setInterval(updateWorldClocks, 1000);
-
-// ========== 点击复制时间 ==========
-document.querySelector('.clock-container').addEventListener('click', () => {
-    const text = document.getElementById('time').textContent.replace(/:/g, ':').trim();
-    navigator.clipboard.writeText(text).catch(() => {});
-});
-
-// ========== 二维码 ==========
-function generateQR() {
-    const url = window.location.href;
-    const qr = document.getElementById('qrcode');
-    // 使用 QRCode.js CDN 或简单用 API
-    qr.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(url)}" style="width:100px;height:100px;border:1px solid #ddd;">`;
-}
+updateI18n();
+updateClock();
 generateQR();
-setInterval(updateClock,1000);
+setInterval(updateClock, 1000);
+setInterval(updateWorldClocks, 1000);
 </script>
 </body>
 </html>

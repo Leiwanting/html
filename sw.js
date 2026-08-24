@@ -1,9 +1,10 @@
-const CACHE_NAME = 'timedisplay-v2';
+const CACHE_NAME = 'timedisplay-v3';
 const urlsToCache = [
   '/html/timedisplay.html',
   '/html/manifest.json',
   '/html/icons/icon-192.svg',
-  '/html/icons/icon-512.svg'
+  '/html/icons/icon-512.svg',
+  '/html/js/qrcode.min.js'
 ];
 
 self.addEventListener('install', event => {

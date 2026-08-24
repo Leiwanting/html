@@ -1,4 +1,4 @@
-const CACHE_NAME = 'timedisplay-v3';
+const CACHE_NAME = 'timedisplay-v4';
 const urlsToCache = [
   '/html/timedisplay.html',
   '/html/manifest.json',

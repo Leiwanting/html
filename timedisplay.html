@@ -601,6 +601,8 @@
             <div id="qrcode"></div>
         </div>
         
+        <button class="sw-btn" id="copyShareBtn" style="margin-top:8px;width:100%;font-size:0.65rem;">COPY LINK</button>
+        
         <!-- ===== 时间戳转换 ===== -->
         <div class="sidebar-section">
         <div class="sidebar-label" data-i18n="ts_label">Timestamp</div>
@@ -690,7 +692,7 @@ function getJulianDay(d){
 }
 function getDayOfYear(d){ const s=new Date(d.getFullYear(),0,0); return Math.floor((d-s)/86400000); }
 function getMoonPhase(d){
-    const year=d.getFullYear(),month=d.getMonth()+1,day=d.getDate();
+    let year=d.getFullYear(),month=d.getMonth()+1,day=d.getDate();
     let c,e,jd,b;
     if(month<3){year--;month+=12;}
     c=365.25*year;e=30.6*month;jd=c+e+day-694039.09;jd/=29.5305882;b=parseInt(jd);jd-=b;
@@ -1030,10 +1032,16 @@ colorSelect.addEventListener('change',(e)=>{
 
 fsToggle.addEventListener('click',()=>{
     fsEnabled=!fsEnabled;fsTrack.classList.toggle('on',fsEnabled);const t=i18n[currentLang];fsToggle.querySelector('.toggle-label').textContent=fsEnabled?t.fs_on:t.fs_off;
-    if(fsEnabled){ document.documentElement.requestFullscreen().catch(()=>{}); }
-    else{ if(document.fullscreenElement)document.exitFullscreen().catch(()=>{}); }
+    if(fsEnabled){
+        const el=document.documentElement;
+        if(el.requestFullscreen){ el.requestFullscreen().catch(()=>{}); }
+        else if(el.webkitRequestFullscreen){ el.webkitRequestFullscreen(); }
+        else{ alert('您的浏览器不支持全屏模式'); fsEnabled=false; fsTrack.classList.remove('on'); fsToggle.querySelector('.toggle-label').textContent=t.fs_off; }
+    } else {
+        if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); }
+        else if(document.webkitFullscreenElement){ document.webkitExitFullscreen(); }
+    }
 });
-document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement&&fsEnabled){ fsEnabled=false;fsTrack.classList.remove('on');const t=i18n[currentLang];fsToggle.querySelector('.toggle-label').textContent=t.fs_off; } });
 
 // ========== 日期格式 ==========
 document.querySelectorAll('.fmt-btn').forEach(btn => {
@@ -1108,6 +1116,36 @@ document.querySelector('.clock-container').addEventListener('click', () => {
     navigator.clipboard.writeText(text).catch(() => {});
 });
 
+function generateShareURL() {
+    const params = new URLSearchParams();
+    params.set('lang', currentLang);
+    params.set('theme', document.querySelector('.theme-btn.active')?.dataset.theme || 'light');
+    params.set('fmt', dateFormat);
+    params.set('size', sizeSlider.value);
+    params.set('color', accentColor);
+    if (worldClocks.length) params.set('cities', worldClocks.join(','));
+    
+    const t = {
+        ganzhi: ganzhiEnabled ? '1' : '0',
+        week: weekEnabled ? '1' : '0',
+        julian: julianEnabled ? '1' : '0',
+        doy: doyEnabled ? '1' : '0',
+        moon: moonEnabled ? '1' : '0',
+        sun: sunEnabled ? '1' : '0',
+        tz: tzDisplayEnabled ? '1' : '0',
+        sec: secondsEnabled ? '1' : '0',
+        colon: colonEnabled ? '1' : '0',
+        '24h': format24h ? '1' : '0',
+        sw: swEnabled ? '1' : '0',
+        timer: timerEnabled ? '1' : '0',
+        fs: fsEnabled ? '1' : '0'
+    };
+    Object.entries(t).forEach(([k, v]) => { if (v === '1') params.set(k, v); });
+    params.set('tzname', selectedTimezone);
+    
+    return `${location.origin}${location.pathname}?${params}`;
+}
+
 // ========== 二维码 ==========
 function generateQR() {
     const qr = document.getElementById('qrcode');
@@ -1126,6 +1164,10 @@ function generateQR() {
         qr.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(url)}" style="width:100px;height:100px;">`;
     }
 }
+document.getElementById('copyShareBtn').addEventListener('click', () => {
+    const url = generateShareURL();
+    navigator.clipboard.writeText(url).catch(() => {});
+});
 
 // ========== 时区处理（优化版）==========
 
@@ -1185,7 +1227,7 @@ function getTimeInTimezone(date, timezone) {
             const k = yy % 100;
             const j = Math.floor(yy / 100);
             const h = (q + Math.floor(13 * (mm + 1) / 5) + k + Math.floor(k / 4) + Math.floor(j / 4) + 5 * j) % 7;
-            return ((h + 5) % 7) + 1;
+            return ((h + 5) % 7);
         },
         getHours() { return this._hour; },
         getMinutes() { return this._minute; },
@@ -1332,6 +1374,42 @@ updateClock();
 generateQR();
 setInterval(updateClock, 1000);
 setInterval(updateWorldClocks, 1000);
+
+// ========== URL 参数解析 ==========
+function parseURLParams() {
+    const params = new URLSearchParams(location.search);
+    if (!params.has('lang')) return;
+
+    const urlSettings = {
+        lang: params.get('lang'),
+        theme: params.get('theme'),
+        dateFormat: params.get('fmt'),
+        fontSize: params.get('size'),
+        accentColor: params.get('color'),
+        worldClocks: params.get('cities')?.split(',') || [],
+        toggles: {
+            ganzhi: params.get('ganzhi') === '1',
+            week: params.get('week') === '1',
+            julian: params.get('julian') === '1',
+            doy: params.get('doy') === '1',
+            moon: params.get('moon') === '1',
+            sun: params.get('sun') === '1',
+            tzDisplay: params.get('tz') === '1',
+            seconds: params.get('sec') !== '0',
+            colon: params.get('colon') !== '0',
+            format24h: params.get('24h') !== '0',
+            sw: params.get('sw') === '1',
+            timer: params.get('timer') === '1',
+            fs: params.get('fs') === '1'
+        },
+        timezone: params.get('tzname') || 'local'
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(urlSettings));
+    history.replaceState({}, '', location.pathname);
+}
+
+parseURLParams();
 
 // ========== 本地存储持久化 ==========
 const STORAGE_KEY = 'timedisplay_settings';
@@ -1483,6 +1561,39 @@ loadSettings();
 // ========== 时间戳转换 ==========
 const tsInput = document.getElementById('tsInput');
 const tsResult = document.getElementById('tsResult');
+    let tsDebounce;
+tsInput.addEventListener('input', () => {
+    clearTimeout(tsDebounce);
+    tsDebounce = setTimeout(() => {
+        const val = tsInput.value.trim();
+        if (!val) { tsResult.textContent = ''; return; }
+
+        let date;
+        if (/^\d+$/.test(val)) {
+            const num = parseInt(val, 10);
+            date = new Date(num > 1e10 ? num : num * 1000);
+        } else {
+            date = new Date(val);
+        }
+
+        if (isNaN(date.getTime())) {
+            tsResult.textContent = 'Invalid';
+            return;
+        }
+
+        const unixSec = Math.floor(date.getTime() / 1000);
+        const unixMs = date.getTime();
+        const iso = date.toISOString();
+        const local = date.toLocaleString(currentLang === 'zh' ? 'zh-CN' : 'en-US');
+
+        tsResult.innerHTML = `
+            <div>Unix(s): ${unixSec}</div>
+            <div>Unix(ms): ${unixMs}</div>
+            <div>ISO: ${iso}</div>
+            <div>Local: ${local}</div>
+        `;
+    }, 300); // 300ms 防抖
+});
 
 tsInput.addEventListener('input', () => {
     const val = tsInput.value.trim();

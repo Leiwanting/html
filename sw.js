@@ -1,10 +1,13 @@
-const CACHE_NAME = 'timedisplay-v7';
+const CACHE_NAME = 'timedisplay-v8';
 const urlsToCache = [
   '/html/timedisplay.html',
   '/html/manifest.json',
   '/html/icons/icon-192.svg',
   '/html/icons/icon-512.svg',
   '/html/css/style.css',
+  '/html/fonts/Orbitron-400.woff2',
+  '/html/fonts/Orbitron-500.woff2',
+  '/html/fonts/Orbitron-700.woff2',
   '/html/js/app.js',
   '/html/js/qrcode.min.js'
 ];

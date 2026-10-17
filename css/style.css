@@ -6,6 +6,10 @@
 @font-face{font-family:'Orbitron';src:url('../fonts/Orbitron-500.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
 @font-face{font-family:'Orbitron';src:url('../fonts/Orbitron-700.woff2') format('woff2'),url('../fonts/Orbitron-700.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
 
+/* ---- 中文：MiSans 子集（仅本站用到的 224 个字符，29KB/字重）---- */
+@font-face{font-family:'MiSansCN';src:url('../fonts/MiSans-400.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap;unicode-range:U+3000-303F,U+4E00-9FFF,U+FF00-FFEF,U+00B7,U+2014,U+FF08,U+FF09,U+FF0C,U+FF1A}
+@font-face{font-family:'MiSansCN';src:url('../fonts/MiSans-700.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap;unicode-range:U+3000-303F,U+4E00-9FFF,U+FF00-FFEF,U+00B7,U+2014,U+FF08,U+FF09,U+FF0C,U+FF1A}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     background-color: #ffffff;
@@ -13,7 +17,7 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     overflow-x: hidden;
 }
 .menu-btn {
@@ -76,7 +80,7 @@ body {
 }
 .lang-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .lang-btn {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     font-size: 0.75rem;
     letter-spacing: 1px;
     padding: 6px 12px;
@@ -117,13 +121,13 @@ body {
 }
 .toggle-track.on .toggle-thumb { transform: translateX(18px); }
 .toggle-label {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     font-size: 0.8rem;
     color: #333;
     letter-spacing: 1px;
 }
 .timezone-select, .color-select {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     font-size: 0.75rem;
     padding: 8px 10px;
     border: 1px solid #ddd;
@@ -222,7 +226,7 @@ body {
 }
 .stopwatch-controls.show { opacity: 1; }
 .sw-btn {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     font-size: 0.7rem;
     letter-spacing: 2px;
     padding: 8px 20px;
@@ -258,7 +262,7 @@ body {
 }
 .timer-controls.show { opacity: 1; }
 .timer-input {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     font-size: 0.8rem;
     width: 50px;
     padding: 6px;
@@ -271,7 +275,7 @@ body {
 /* ===== 新增功能样式 ===== */
 .format-options { display: flex; gap: 6px; flex-wrap: wrap; }
 .fmt-btn {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     font-size: 0.65rem;
     letter-spacing: 1px;
     padding: 5px 10px;
@@ -318,7 +322,7 @@ body {
 .theme-btn:hover { transform: scale(1.1); }
 .theme-btn.active { border-color: #111; }
 .world-clock-item {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'MiSansCN', sans-serif;
     font-size: 0.75rem;
     color: #666;
     letter-spacing: 1px;

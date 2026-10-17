@@ -1,4 +1,4 @@
-const CACHE_NAME = 'timedisplay-v10';
+const CACHE_NAME = 'timedisplay-v11';
 const urlsToCache = [
   '/html/timedisplay.html',
   '/html/index.html',

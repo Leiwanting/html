@@ -469,10 +469,43 @@ worldClockSelect.addEventListener('change', (e) => {
     worldClockSelect.value = '';
 });
 
+// ========== 剪贴板工具（兼容无 Clipboard API 的浏览器）==========
+function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    let ok = false;
+    try {
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        ok = document.execCommand('copy');
+    } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+}
+
+function copyText(text) {
+    return new Promise(resolve => {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(() => resolve(true))
+                .catch(() => resolve(fallbackCopy(text)));
+        } else {
+            resolve(fallbackCopy(text));
+        }
+    }).then(ok => {
+        // 两种方式都失败时，退化成手动复制，绝不静默失败
+        if (!ok) window.prompt('自动复制失败，请长按选中后复制：', text);
+        return ok;
+    });
+}
+
 // ========== 点击复制时间 ==========
 document.querySelector('.clock-container').addEventListener('click', () => {
     const text = document.getElementById('time').textContent.trim();
-    navigator.clipboard.writeText(text).catch(() => {});
+    copyText(text);
 });
 
 function generateShareURL() {
@@ -523,9 +556,16 @@ function generateQR() {
         qr.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(url)}" style="width:100px;height:100px;">`;
     }
 }
-document.getElementById('copyShareBtn').addEventListener('click', () => {
+document.getElementById('copyShareBtn').addEventListener('click', function () {
+    const btn = this;
     const url = generateShareURL();
-    navigator.clipboard.writeText(url).catch(() => {});
+    copyText(url).then(ok => {
+        const label = btn.textContent;
+        btn.textContent = ok
+            ? (currentLang === 'zh' ? '已复制 ✓' : 'COPIED ✓')
+            : (currentLang === 'zh' ? '复制失败' : 'FAILED');
+        setTimeout(() => { btn.textContent = label; }, 1500);
+    });
 });
 
 // ========== 时区处理（优化版）==========

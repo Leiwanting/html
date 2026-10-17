@@ -964,8 +964,18 @@ function rfc6979GenerateK(privBig, h1Bytes, q, hashName, qlen) {
 
 /* 同步 HMAC（RFC 6979 的生成循环要反复调用，异步版本无法使用） */
 function hmacBytesSync(hashName, keyBytes, data) {
-  var blockSize = (hashName === 'SHA-512' || hashName === 'SHA-384') ? 128 : 64;
-  var outLen = hashName === 'SHA-256' ? 32 : (hashName === 'SHA-512' ? 64 : (hashName === 'SHA-384' ? 48 : 32));
+  /* blockSize / outLen 必须由【哈希名】查表得到，不可用 outLen 反推。
+     反推在现有四种组合下恰好正确，但接 Streebog-512（输出 64 而 blockSize 是 64）、
+     SHA3-512（非 Merkle-Damgård，rate 也不同）时会静默算错且不报错。
+     未知哈希一律抛错，宁可失败也不降级猜一个值。 */
+  var SPEC = {
+    'SHA-256': { bs: 64, ol: 32 },
+    'SHA-512': { bs: 128, ol: 64 },
+    'SHA-384': { bs: 128, ol: 48 }
+  };
+  var spec = SPEC[hashName];
+  if (!spec) throw new Error('HMAC: 未知哈希 ' + hashName + '，请先在 SPEC 表中登记 blockSize 与 outLen');
+  var blockSize = spec.bs, outLen = spec.ol;
   var hashFn;
   if (hashName === 'SHA-256') hashFn = sha256BytesSync;
   /* SHA-512 / SHA-384 复用 crypto_core.js 的 BigInt 核心，只是同步取用 */

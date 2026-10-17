@@ -1067,12 +1067,16 @@ function u32be(v) {
   return new Uint8Array([(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]);
 }
 
-function pbkdf2Generic(hashFn, outLen, pw, salt, iterations, dkLen) {
-  /* HMAC 的 blockSize 由【具体哈希】决定，不能写死 64：
-     SHA-512 / SHA-384 是 128 字节，SHA-256 / SHA-224 / SM3 才是 64。
-     早先写死 64，导致 PBKDF2-SHA-512 / SHA-384 的回退路径（原生不可用时）
-     算出与 RFC 8018 不一致的结果 —— 浏览器走 WebCrypto 掩盖了这个缺陷。 */
-  var blockSize = (outLen > 32) ? 128 : 64;
+function pbkdf2Generic(hashFn, outLen, pw, salt, iterations, dkLen, blockSize) {
+  /* HMAC 的 blockSize 由【具体哈希】决定，必须由调用方显式传入。
+     两个历史坑，都不能再犯：
+       1) 写死 64 —— SHA-512 / SHA-384 的 blockSize 是 128，
+          导致 PBKDF2-SHA-512/384 的回退路径算出与 RFC 8018 不一致的结果。
+       2) 用 outLen > 32 反推 —— 这是启发式，接新哈希时会静默算错：
+          Streebog-512 输出 64 字节但 blockSize 是 64（不是 128）；
+          SHA-3 系列也不是 Merkle-Damgård 结构。
+     所以这里不猜：没传就报错，绝不静默降级。 */
+  if (!blockSize) throw new Error('PBKDF2: HMAC blockSize 必须由调用方显式传入，不可反推');
   var nBlocks = Math.ceil(dkLen / outLen);
   var out = new Uint8Array(nBlocks * outLen);
   var pwb = (typeof pw === 'string') ? strToBytes(pw) : pw;
@@ -1100,7 +1104,7 @@ function pbkdf2Generic(hashFn, outLen, pw, salt, iterations, dkLen) {
 }
 function pbkdf2Sm3(pw, salt, iterations, dkLen) {
   if (typeof sm3Digest !== 'function') throw new Error('SM3 不可用');
-  return pbkdf2Generic(sm3Digest, 32, pw, salt, iterations, dkLen);
+  return pbkdf2Generic(sm3Digest, 32, pw, salt, iterations, dkLen, 64);
 }
 async function pbkdf2WithHash(pw, salt, iterations, dkLen, hashName) {
   if (hashName === 'SM3') return pbkdf2Sm3(pw, salt, iterations, dkLen);
@@ -1114,11 +1118,11 @@ async function pbkdf2WithHash(pw, salt, iterations, dkLen, hashName) {
   }
   /* 同步回退仅覆盖 SHA-256 / SHA-512；SHA-384 与 SHA-1 若原生不可用则明确报错，
      避免引用不存在的常量导致崩溃。 */
-  var fn = null, ol = 32;
-  if (hashName === 'SHA-512' && typeof sha512Digest === 'function') { fn = sha512Digest; ol = 64; }
-  else if (hashName === 'SHA-256') { fn = sha256BytesSync; ol = 32; }
+  var fn = null, ol = 32, bs = 64;
+  if (hashName === 'SHA-512' && typeof sha512Digest === 'function') { fn = sha512Digest; ol = 64; bs = 128; }
+  else if (hashName === 'SHA-256') { fn = sha256BytesSync; ol = 32; bs = 64; }
   if (!fn) throw new Error('PBKDF2-' + hashName + ' 在当前环境不可用');
-  return pbkdf2Generic(fn, ol, pw, salt, iterations, dkLen);
+  return pbkdf2Generic(fn, ol, pw, salt, iterations, dkLen, bs);
 }
 
 /* 口令派生主入口。

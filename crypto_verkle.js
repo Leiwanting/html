@@ -176,7 +176,9 @@ function vDecompress(hexStr) {
      早先直接 % V_Q 会把 >= Q 的输入静默归约后照常接受，
      同一个点因此有多种编码表示，可被用于承诺/证明的延展性攻击。 */
   if (xRaw >= V_Q) return null;
-  var x = xRaw % V_Q;
+  /* 走到这里 xRaw 必然 < V_Q（上面已拒绝），再 % V_Q 恒等自身，是死操作。
+     删掉以免误导读者以为这里还要归约。 */
+  var x = xRaw;
   if (!vInSubgroupLegendre(x)) return null;
   return vPointFromX(x);
 }

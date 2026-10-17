@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>字体自检 · Font Check</title>
+<style>
+  @font-face{font-family:'Orbitron';src:url('fonts/Orbitron-700.woff2') format('woff2');font-weight:700;font-style:normal;font-display:block}
+  body{font-family:-apple-system,sans-serif;margin:0;padding:16px;background:#fafafa;color:#222}
+  h1{font-size:18px;margin:0 0 12px}
+  .card{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;margin-bottom:12px}
+  .row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px;border-bottom:1px dashed #eee}
+  .row:last-child{border-bottom:none}
+  .ok{color:#0a0;font-weight:700}
+  .bad{color:#d00;font-weight:700}
+  .sample{font-size:40px;font-weight:700;letter-spacing:2px;margin:8px 0}
+  .mono{font-family:monospace;font-size:12px;color:#666;word-break:break-all}
+  pre{background:#f4f4f4;padding:8px;border-radius:6px;font-size:11px;overflow:auto;max-height:180px}
+</style>
+</head>
+<body>
+<h1>字体自检 / Font Check</h1>
+
+<div class="card">
+  <div style="font-size:13px;color:#666;margin-bottom:6px">1. 用 JS 强制加载 woff2（40px 700）</div>
+  <div class="row"><span>woff2 加载</span><span id="s-woff2">检测中…</span></div>
+  <div class="row"><span>ttf 加载</span><span id="s-ttf">检测中…</span></div>
+  <div class="row"><span>document.fonts.check</span><span id="s-check">检测中…</span></div>
+  <div class="row"><span>浏览器支持 woff2</span><span id="s-sup">检测中…</span></div>
+</div>
+
+<div class="card">
+  <div style="font-size:13px;color:#666">2. 渲染对比（上=Orbitron，下=系统字体）</div>
+  <div class="sample" style="font-family:'Orbitron',serif">07:45:16 PM</div>
+  <div class="sample" style="font-family:sans-serif;font-weight:700">07:45:16 PM</div>
+  <div style="font-size:12px;color:#888">两者形状明显不同才说明 Orbitron 生效（Orbitron 的 0 是带斜杠的方块）</div>
+</div>
+
+<div class="card">
+  <div style="font-size:13px;color:#666;margin-bottom:6px">3. 实际网络请求记录</div>
+  <pre id="net">（等待…）</pre>
+</div>
+
+<script>
+const log = [];
+function set(id, text, cls){
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = cls || '';
+  log.push(id + ': ' + text);
+}
+
+set('s-sup', ('FontFace' in window) ? 'FontFace API 可用' : '无 FontFace API', ('FontFace' in window)?'ok':'bad');
+
+const bust = '?v=' + Date.now();
+const woff2 = 'fonts/Orbitron-700.woff2' + bust;
+const ttf   = 'fonts/Orbitron-700.ttf' + bust;
+
+function testFont(name, url, expectFmt, target){
+  return new FontFace(name, `url(${url}) format('${expectFmt}')`, {weight:'700'})
+    .load()
+    .then(f => { document.fonts.add(f); set(target, 'OK ✅ 加载成功', 'ok'); return true; })
+    .catch(e => { set(target, '失败 ❌ ' + (e && e.message ? e.message : e), 'bad'); return false; });
+}
+
+Promise.all([
+  testFont('OrbitTestW2', woff2, 'woff2', 's-woff2'),
+  testFont('OrbitTestTTF', ttf, 'truetype', 's-ttf')
+]).then(() => {
+  const ok = document.fonts.check("700 40px 'OrbitTestW2'") || document.fonts.check("700 40px 'OrbitTestTTF'");
+  set('s-check', document.fonts.check("700 40px 'Orbitron'") ? 'Orbitron 已就绪 ✅' : 'Orbitron 未就绪 ❌', document.fonts.check("700 40px 'Orbitron'")?'ok':'bad');
+});
+
+setTimeout(() => {
+  const entries = performance.getEntriesByType('resource')
+    .filter(e => /Orbitron/.test(e.name))
+    .map(e => `${e.name.split('/').pop().split('?')[0]}  ${Math.round(e.duration)}ms  size=${e.transferSize}  ${e.responseStatus || ''}`);
+  document.getElementById('net').textContent = entries.length ? entries.join('\n') : '（未记录到字体请求：可能被缓存命中或根本没发起）';
+}, 3000);
+</script>
+</body>
+</html>

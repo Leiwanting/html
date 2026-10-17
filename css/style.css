@@ -2,9 +2,9 @@
    从 timedisplay.html 内联 <style> 抽出，内容未改动 */
 
 /* ---- 自托管 Orbitron（替代 Google Fonts）---- */
-@font-face{font-family:'Orbitron';src:url('../fonts/Orbitron-400.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Orbitron';src:url('../fonts/Orbitron-400.woff2') format('woff2'),url('../fonts/Orbitron-400.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:'Orbitron';src:url('../fonts/Orbitron-500.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:'Orbitron';src:url('../fonts/Orbitron-700.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'Orbitron';src:url('../fonts/Orbitron-700.woff2') format('woff2'),url('../fonts/Orbitron-700.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {

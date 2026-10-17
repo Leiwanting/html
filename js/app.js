@@ -2,9 +2,20 @@
    从 timedisplay.html 内联 <script> 抽出，内容未改动 */
 
 if ('serviceWorker' in navigator) {
+  // 已有 SW 接管时，若检测到新的 SW 接管，自动刷新一次拿到最新资源（防止旧缓存顶住更新）
+  const hadController = !!navigator.serviceWorker.controller;
+  let refreshed = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || refreshed) return;
+    refreshed = true;
+    location.reload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js')
-      .then(reg => console.log('[PWA] SW registered:', reg.scope))
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        console.log('[PWA] SW registered:', reg.scope);
+        reg.update();
+      })
       .catch(err => console.log('[PWA] SW failed:', err));
   });
 }

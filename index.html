@@ -1,15 +1,440 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Time Display</title>
-<link rel="canonical" href="timedisplay.html">
-<meta http-equiv="refresh" content="0; url=timedisplay.html">
-<style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#fff;color:#666;font-family:sans-serif}
-a{color:#0a7;text-decoration:none}</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>加密 / 解密工具</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<a href="timedisplay.html">正在进入 Time Display →</a>
+<header class="topbar">
+  <svg class="app-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 2.5 4 5.6v6.1c0 4.6 3.2 8.4 8 9.8 4.8-1.4 8-5.2 8-9.8V5.6L12 2.5z"
+          fill="#2b6cb0" fill-opacity=".12" stroke="#2b6cb0" stroke-width="1.4"
+          stroke-linejoin="round"/>
+    <path d="M12 2.5 4 5.6v6.1c0 4.6 3.2 8.4 8 9.8 4.8-1.4 8-5.2 8-9.8V5.6L12 2.5z"
+          stroke="#2b6cb0" stroke-width="1.4" stroke-linejoin="round" fill="none"/>
+    <rect x="9.1" y="10.6" width="5.8" height="4.6" rx="1.1" fill="#2b6cb0" fill-opacity=".18"
+          stroke="#2b6cb0" stroke-width="1.3"/>
+    <path d="M10.3 10.6V9.4a1.7 1.7 0 0 1 3.4 0v1.2" stroke="#2b6cb0" stroke-width="1.3"
+          stroke-linecap="round" fill="none"/>
+  </svg>
+  <span class="app-name">加密工具箱</span>
+  <span class="app-sub">Aegis Crypto Toolbox</span>
+  <span class="ver-badge" id="verBadge" title="点击查看版本信息">v1.0.0 <b>Aegis</b><i class="ver-abbr">AGS</i></span>
+</header>
+
+<div class="wrap">
+  <h1>加密 / 解密工具</h1>
+
+  <div class="ver-card hidden" id="verCard">
+    <div class="ver-card-head">
+      <span class="ver-ver">v1.0.0</span>
+      <span class="ver-code">Aegis</span>
+      <span class="ver-abbr-big">AGS</span>
+      <span class="ver-cn">埃癸斯 · 神盾</span>
+    </div>
+    <p class="ver-line">
+      <b>Aegis（埃癸斯）</b>是希腊神话中宙斯与雅典娜所持的神盾，取其守护之意；缩写 <b>AGS</b>。
+      这个工具的两个坚持是：<b>149 个算法</b>全部经权威向量或参考实现交叉验证，
+      以及<b>零外部依赖</b>——不引任何 CDN 或 npm 包，断网可用。
+      <span class="ver-codenote">内部代号 ARGUS（阿格斯·百眼）见 CHANGELOG。</span>
+    </p>
+    <div class="ver-grid">
+      <div><span>算法总数</span><b id="verAlgo">—</b></div>
+      <div><span>压力测试</span><b id="verStress">—</b></div>
+      <div><span>内置自检</span><b id="verSelf">—</b></div>
+      <div><span>控制台报错</span><b id="verErr">0</b></div>
+    </div>
+    <p class="ver-note">
+      全部算法均以权威实现为参照逐条比对：Twofish 对 C 参考实现、Camellia 对 OpenSSL、
+      SEED 对 RFC 4269 官方向量与 OpenSSL 随机向量、ARIA 对 RFC 5794 三组 KAT、
+      SM2 与 GmSSL 双向互通、bcrypt 与 bcryptjs 逐字节一致。
+    </p>
+  </div>
+
+  <div id="globalError" class="global-error hidden"></div>
+
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label for="algo">算法</label>
+        <div class="algo-picker">
+          <button type="button" id="algoBtn" class="algo-picker-btn" aria-haspopup="true" aria-expanded="false">
+            <span class="algo-btn-main">
+              <span id="algoBtnText">请选择算法</span>
+              <span class="algo-btn-cat" id="algoBtnCat"></span>
+            </span>
+            <span class="algo-btn-arrow">▾</span>
+          </button>
+          <div id="algoPanel" class="algo-panel hidden">
+            <div class="algo-panel-search">
+              <input type="text" id="algoSearch" placeholder="搜索算法（支持模糊，如 aes2 / sm2 / 哈希 / 门限）"
+                     autocomplete="off" spellcheck="false">
+            </div>
+            <div id="algoHist" class="algo-hist hidden"></div>
+            <div id="algoList" class="algo-panel-body"></div>
+          </div>
+        </div>
+        <select id="algo" class="algo-native" aria-hidden="true" tabindex="-1"></select>
+      </div>
+      <div class="field" id="keyField">
+        <label for="key" id="keyLabel">密钥</label>
+        <input type="text" id="key" placeholder="请输入密钥" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      
+        <select id="keyMode" style="margin-top:6px">
+          <option value="pw">口令（走 KDF 派生）</option>
+          <option value="raw">原始密钥（Hex，不经 KDF）</option>
+        </select>
+      </div>
+<div class="field hidden" id="paramField">
+        <label for="param" id="paramLabel">参数</label>
+        <input type="text" id="param" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      </div>
+    </div>
+
+    <div class="row hidden" id="cipherRow">
+      <div class="field" id="modeField">
+        <label for="mode">加密模式</label>
+        <select id="mode">
+          <option value="CBC">CBC</option>
+          <option value="ECB">ECB</option>
+          <option value="CFB">CFB</option>
+          <option value="OFB">OFB</option>
+          <option value="CTR">CTR</option>
+          <option value="XTS">XTS（磁盘加密）</option>
+          <option value="GCM" selected>GCM（认证加密）</option>
+          <option value="CCM">CCM（认证加密）</option>
+          <option value="SIV">SIV（确定性认证加密）</option>
+          <option value="EAX">EAX（认证加密）</option>
+          <option value="OCB">OCB（认证加密）</option>
+          <option value="PCBC">PCBC（错误传播 CBC）</option>
+          <option value="LRW">LRW（可调分组，XTS 前身）</option>
+          <option value="CTS-CS1">CTS-CS1（密文窃取 NIST）</option>
+          <option value="CTS-CS2">CTS-CS2（密文窃取）</option>
+          <option value="CTS-CS3">CTS-CS3（Kerberos5）</option>
+          <option value="CFB8">CFB8（8 位 CFB）</option>
+          <option value="CFB1">CFB1（1 位 CFB）</option>
+        </select>
+      </div>
+      <div class="field" id="padField">
+        <label for="padding">填充模式</label>
+        <select id="padding">
+          <option value="PKCS7">PKCS7</option>
+          <option value="PKCS5">PKCS5（8 字节块）</option>
+          <option value="ISO10126">ISO 10126（随机填充）</option>
+          <option value="X923">ANSI X9.23</option>
+          <option value="ISO7816">ISO/IEC 7816-4</option>
+          <option value="TBC">TBC（尾位补码）</option>
+          <option value="ESP">ESP（RFC 4303 / IPsec）</option>
+          <option value="Zero">Zero 填充</option>
+          <option value="None">无填充</option>
+        </select>
+      </div>
+      <div class="field hidden" id="aadField">
+        <label for="aad">AAD 附加认证数据（可选）</label>
+        <input type="text" id="aad" placeholder="AEAD 模式下参与认证但不加密的数据" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="field" id="containerField">
+        <label for="container">封装格式</label>
+        <select id="container">
+          <option value="none">无（裸密文）</option>
+          <option value="openssl">OpenSSL 兼容（Salted__）</option>
+          <option value="cryptojs">CryptoJS JSON</option>
+          <option value="pgp">PGP ASCII Armor</option>
+          <option value="jwe">JWE（紧凑序列化）</option>
+        </select>
+      </div>
+      <div class="field" id="saltField">
+        <label for="salt">Salt 盐值（Hex，留空自动生成）</label>
+        <input type="text" id="salt" placeholder="参与密钥派生；可与对端约定固定值" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="field hidden" id="tagLenField">
+        <label for="tagLen">AEAD 标签长度</label>
+        <select id="tagLen">
+          <option value="16">16 字节（128 位，推荐）</option>
+          <option value="15">15 字节（120 位）</option>
+          <option value="14">14 字节（112 位）</option>
+          <option value="13">13 字节（104 位）</option>
+          <option value="12">12 字节（96 位）</option>
+          <option value="8">8 字节（64 位，较弱）</option>
+          <option value="4">4 字节（32 位，仅测试）</option>
+        </select>
+      </div>
+      <div class="field" id="kdfField">
+        <label for="kdf">口令派生（KDF）</label>
+        <select id="kdf">
+          <option value="kdf2">PBKDF2（可选摘要算法）</option>
+          <option value="argon2id">Argon2id（推荐，抗 GPU/ASIC）</option>
+          <option value="argon2i">Argon2i（抗侧信道）</option>
+          <option value="argon2d">Argon2d（抗 GPU，最快）</option>
+          <option value="scrypt">scrypt（抗 ASIC）</option>
+          <option value="bcrypt">bcrypt（经典口令哈希）</option>
+          <option value="legacy">旧版单次 SHA-256（仅解历史数据）</option>
+        </select>
+      </div>
+      <div class="field hidden" id="kdfHashField">
+        <label for="kdfHash">PBKDF2 摘要算法</label>
+        <select id="kdfHash">
+          <option value="SHA-256">SHA-256（推荐）</option>
+          <option value="SHA-512">SHA-512</option>
+          <option value="SHA-384">SHA-384</option>
+          <option value="SHA-1">SHA-1（兼容旧系统，已弱化）</option>
+          <option value="SM3">SM3（国密）</option>
+        </select>
+      </div>
+      <div class="field" id="kdfIterField">
+        <label for="kdfIter" id="kdfIterLabel">PBKDF2 迭代次数</label>
+        <input type="text" id="kdfIter" value="210000" placeholder="建议 ≥ 210000" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field" id="nonceGuardField">
+        <label for="nonceGuard">nonce 复用检测</label>
+        <select id="nonceGuard">
+          <option value="block">阻止（发现复用即中止）</option>
+          <option value="warn">仅警告</option>
+          <option value="off">关闭</option>
+        </select>
+      </div>
+      <div class="field" id="padStrictField">
+        <label for="padStrict">填充校验</label>
+        <select id="padStrict">
+          <option value="strict">严格（防 Padding Oracle）</option>
+          <option value="loose">宽松（仅排查旧数据）</option>
+        </select>
+      </div>
+      <div class="field hidden" id="ivField">
+        <label for="iv">IV（留空则自动生成并回写）</label>
+        <input type="text" id="iv" placeholder="Hex 格式；留空则加密时自动生成并填回此处" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      </div>
+    </div>
+
+    <div class="status" id="algoInfo"></div>
+    <details id="selftestBox" class="hidden" style="margin-top:8px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--muted)">自检结果</summary>
+      <div class="status" id="selftestOut" style="margin-top:8px;line-height:1.7;font-size:12px"></div>
+    </details>
+    <div class="status notice notice--warn hidden" id="secWarn"></div>
+  </div>
+
+  <div class="panel">
+    <div class="field">
+      <div class="field-head">
+        <label for="input">输入内容</label>
+        <span class="head-actions">
+          <label class="mini-btn" for="fileIn">载入文件</label>
+          <button type="button" id="btnImportKey" class="mini-btn">导入密钥(PEM)</button>
+        </span>
+      </div>
+      <input type="file" id="fileIn" style="display:none">
+      <textarea id="input" placeholder="在此输入文本，或拖拽文件到下方"></textarea>
+    </div>
+
+    <div class="drop" id="drop">
+      <span id="dropText">拖拽文件到此处，或点击选择文件</span>
+      <input type="file" id="file" aria-label="选择文件">
+    </div>
+
+    <div class="status" id="fileInfo"></div>
+
+    <div class="row" style="margin-top:12px">
+      <div class="field">
+        <label for="fmt">密文格式</label>
+        <select id="fmt">
+          <option value="base64">Base64</option>
+          <option value="hex">十六进制</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button class="primary" id="btnEnc" type="button">加密</button>
+      <button class="primary" id="btnDec" type="button">解密</button>
+      <button id="btnClear" type="button">清空</button>
+      <button id="btnClearNonce" type="button">清空 nonce 记录</button>
+      <button id="btnSelftest" type="button">内置自检</button>
+      <button id="btnCancel" class="danger-btn hidden" type="button">取消</button>
+    </div>
+
+    <div id="progBox" class="prog-box hidden">
+      <div class="prog-track"><div id="progBar" class="prog-bar"></div></div>
+      <span id="progText" class="prog-text">0%</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="field">
+      <label for="output">输出结果</label>
+      <textarea id="output" readonly></textarea>
+    </div>
+
+    <div id="ivInfoBox" class="iv-info hidden">
+      <span id="ivInfoLabel">IV：</span>
+      <span id="ivInfoValue" class="iv-value"></span>
+      <button id="btnCopyIV" type="button" class="mini">复制 IV</button>
+    </div>
+
+    <div class="buttons">
+      <button id="btnCopy" type="button">复制结果</button>
+      <button id="btnDownload" type="button">下载结果</button>
+    </div>
+    <div class="status" id="msg"></div>
+  </div>
+</div>
+<script src="Encryption_and_decryption_logic.js"></script>
+<script src="crypto_tables.js"></script>
+<script src="crypto_core.js"></script>
+<script src="crypto_modes.js"></script>
+<!-- 按算法族拆分的实现文件（取代原先不断膨胀的 crypto_extraN.js） -->
+<script src="crypto_salsa20.js"></script>
+<script src="crypto_outfmt.js"></script>
+<script src="crypto_curve448.js"></script>
+<script src="crypto_fpe.js"></script>
+<script src="crypto_aead_adv.js"></script>
+<script src="crypto_block_legacy.js"></script>
+<script src="crypto_bip.js"></script>
+<script src="crypto_pairing_bn254.js"></script>
+<script src="b377_gen.js"></script>
+<script src="b377_h2c.js"></script>
+<script src="crypto_sss.js"></script>
+<script src="crypto_hpke.js"></script>
+<script src="crypto_spake2p.js"></script>
+<script src="crypto_zuc.js"></script>
+<script src="crypto_whirlpool.js"></script>
+<script src="crypto_ed25519.js"></script>
+<script src="crypto_ristretto.js"></script>
+<script src="crypto_sm2kx.js"></script>
+<script src="crypto_decaf448.js"></script>
+<script src="crypto_kzg.js"></script>
+<script src="crypto_sm9.js"></script>
+<!-- 后量子 -->
+<script src="pqc_core.js"></script>
+<script src="pqc_dsa.js"></script>
+<script src="crypto_sphincs+.js"></script>
+<!-- 椭圆曲线配对 -->
+<script src="bls_const.js"></script>
+<script src="pqc_bls.js"></script>
+<!-- 门限密码（FROST + GG20） -->
+<script src="crypto_threshold.js"></script>
+<script src="crypto_bulletproof.js"></script>
+<script src="crypto_verkle_basis.js"></script>
+<script src="crypto_verkle.js"></script>
+<script src="algo_picker.js"></script>
+<script src="crypto_hqc.js"></script>
+<script src="crypto_wideblock.js"></script>
+<script src="crypto_encoding2.js"></script>
+<script src="crypto_ibe.js"></script>
+<script src="crypto_xts.js"></script>
+<script src="crypto_otp.js"></script>
+<script src="crypto_siphash.js"></script>
+<script src="crypto_simon.js"></script>
+<script src="crypto_speck.js"></script>
+<script src="crypto_gift.js"></script>
+<script src="crypto_shacal2.js"></script>
+<script src="crypto_noekeon.js"></script>
+<script src="crypto_misty1.js"></script>
+<script src="crypto_kasumi.js"></script>
+<script src="crypto_lightweight.js"></script>
+<script src="crypto_turboshake.js"></script>
+<script src="crypto_kdf_addr.js"></script>
+<script src="crypto_merkle.js"></script>
+<script src="crypto_bip39_words.js"></script>
+<script src="crypto_bip39.js"></script>
+<script src="crypto_adiantum.js"></script>
+<script src="crypto_mceliece.js"></script>
+<script src="crypto_frodo.js"></script>
+<script src="crypto_blake2p.js"></script>
+<script src="crypto_ascon.js"></script>
+<script src="crypto_tiger.js"></script>
+<script src="crypto_skein.js"></script>
+<script src="crypto_kdf2.js"></script>
+<script src="crypto_nistkdf.js"></script>
+
+<div class="panel">
+<details>
+<summary style="cursor:pointer;font-size:13px;color:var(--muted)">新增算法使用说明（ECC / SM2 / DSA / ElGamal / Twofish / Camellia）</summary>
+<div class="status" style="margin-top:10px;line-height:1.9">
+<b>1. 先生成密钥</b>：算法选「密钥工具 → 密钥生成」，参数栏填 <code>ecc</code>（默认 P-256）、<code>ecc:p384</code>、<code>ecc:p521</code>、<code>ecc:secp256k1</code>、<code>sm2</code>、<code>dsa</code>、<code>elgamal</code>、<code>dh</code>，点【加密】即输出一对新密钥。<br>
+<b>2. ECC 通用加密（ECIES）</b>：加密＝参数栏填对方公钥；解密＝密钥栏填自己的私钥。<br>
+<b>3. ECC 密钥协商（ECDH）</b>：双方各填自己的私钥 + 对方的公钥，算出同一个共享密钥。<br>
+<b>4. ECDSA / DSA / SM2 签名</b>：【加密】＝用私钥签名；【解密】＝密钥栏填公钥、参数栏填签名、输入框填原消息。<br>
+<b>5. SM2 加密</b>：加密＝参数栏填对方公钥；解密＝密钥栏填自己的私钥。<br>
+<b>6. ElGamal 加密</b>：加密＝参数栏填对方公钥 y；解密＝密钥栏填自己的私钥 x。<br>
+<div style="margin-bottom:10px;padding:10px;background:rgba(255,255,255,.04);border-radius:6px;line-height:1.8">
+<b>关于 IV（初始化向量）</b>：留空时会自动随机生成，并<b>回写到上方 IV 输入框</b>，而<b>不会</b>拼进密文里。
+因此密文更短，但解密时必须把对应的 IV 一起填回（IV 不是秘密，可以和密文一起传输/保存，但同一密钥下禁止重复使用同一个 IV）。
+手动填写 IV 时，加密结果完全可复现。旧版本产生的「IV 头 + 密文」格式仍能正常解密。
+</div>
+<b>7. Twofish / Camellia</b>：与 AES 用法完全一致，支持 ECB/CBC/CFB/OFB/CTR；两者均提供 128 / 192 / 256 三种密钥长度。<br>
+<span style="color:var(--muted)">曲线可用前缀写在密钥或参数栏开头，如 <code>p384:04ab…</code>；不写则默认 P-256。SM2 默认用户标识 ID = 1234567812345678。</span>
+</div>
+</details>
+</div>
+<div class="panel">
+<details>
+<summary style="cursor:pointer;font-size:13px;color:var(--muted)">第三批算法说明（AEAD / 哈希 / KDF / TEA 族 / 古典密码）</summary>
+<div class="status" style="margin-top:10px;line-height:1.9">
+<b>AES-GCM / ChaCha20-Poly1305</b>：认证加密（AEAD）。密钥栏填密钥，参数栏填附加数据 AAD（可选）。输出自带 nonce 与认证标签，解密时若密文被篡改会直接报错。<br>
+<b>BLAKE2b / RIPEMD-160</b>：单向哈希。BLAKE2b 可在参数栏指定输出字节数（1~64，默认 64）。<br>
+<b>HMAC</b>：输入栏填消息，密钥栏填密钥，参数栏填哈希算法（SHA-256/SHA-512/SHA-1）。<br>
+<b>PBKDF2</b>：输入栏填口令，密钥栏填盐值，参数栏填迭代次数（默认 100000）。<br>
+<b>HKDF</b>：输入栏填原始密钥材料 IKM，密钥栏填 info（可选），参数栏填输出字节数。<br>
+<b>scrypt</b>：输入栏填口令，密钥栏填盐值，参数栏填 N,r,p（默认 16384,8,1，N 须为 2 的幂，上限 32768）。<br>
+<b>TEA / XTEA / GOST Magma</b>：与 AES 用法一致。XXTEA 为变长块，直接对整个消息加解密。<br>
+<b>古典密码</b>：维吉尼亚（参数＝密钥词）、仿射（参数＝a,b）、栅栏（参数＝栏数）、Playfair（参数＝密钥词）、Atbash、培根密码，均为教学用途。
+</div>
+</details>
+</div>
+<div class="panel">
+<details>
+<summary style="cursor:pointer;font-size:13px;color:var(--muted)">第四批算法说明（Streebog / Kuznyechik / Serpent / AES-CCM / SHAKE / KMAC / CMAC）</summary>
+<div class="status" style="margin-top:10px;line-height:1.9">
+<b>Streebog-256/512</b>：俄罗斯国家标准哈希 GOST R 34.11-2012。<br>
+<b>Kuznyechik / Serpent</b>：与 AES 用法一致（128 位块）。Kuznyechik 是俄罗斯 GOST R 34.12-2015 的 128 位分组密码；Serpent 是 AES 决赛算法，安全裕度高于 AES。<br>
+<b>AES-CCM</b>：认证加密（CBC-MAC + CTR），常用于 WPA2 / 蓝牙。密钥栏填密钥，参数栏填 AAD（可选）。<b>明文不能为空</b>。<br>
+<b>SHAKE128/256</b>：可扩展输出函数，参数栏填输出字节数（默认 32）。<br>
+<b>KMAC128/256</b>：NIST SP 800-185 的 Keccak MAC。输入栏填消息，密钥栏填密钥（<b>至少 16 字节</b>），参数栏填输出字节数。<br>
+<b>CMAC-AES</b>：基于 AES 的消息认证码。输入栏填消息，密钥栏填密钥。
+</div>
+</details>
+</div>
+<div class="panel">
+<details>
+<summary style="cursor:pointer;font-size:13px;color:var(--muted)">输出格式与新增模式说明（14 种编码 / XTS / Argon2）</summary>
+<div class="status" style="margin-top:10px;line-height:1.9">
+<b>输出格式（14 种，任选）</b>：Base64、Base64URL、Hex 小写/大写/空格分隔/冒号分隔、C 数组、十进制数组、二进制串、转义串、Base32、Base58、Ascii85、PEM 风格。<b>加密与解密要选同一种格式</b>，否则解析会出错。<br><br>
+<b>XTS 模式（磁盘加密）</b>：IEEE 1619 标准，用于磁盘/扇区加密。选 XTS 后，<b>IV 框里填的就是 tweak</b>（16 字节），留空会随机生成并回写。特点：<b>不填充</b>，密文长度 = 明文长度；<b>明文至少 16 字节</b>；只支持 128 位块算法（AES/Serpent/Kuznyechik/Camellia/Twofish/SM4 等），DES/Blowfish/IDEA 会明确拒绝。<br><br>
+<b>Argon2（内存硬 KDF）</b>：RFC 9106，抗 ASIC/GPU 暴力破解，强于 PBKDF2 和 scrypt。用法：<b>输入栏填盐（至少 8 字节）</b>，密钥栏填口令，参数栏填 <code>轮数,内存KB,输出字节数</code>（如 <code>2,1024,32</code>）。三种变体：Argon2id（推荐）、Argon2i（抗侧信道）、Argon2d（抗 GPU 最强）。<br>
+<span style="color:#c8a86b">性能提示：本实现用 BigInt 做 64 位运算，1MB/2 轮约 0.24 秒；内存开得越大越慢，建议先用 1024 以内试。</span>
+</div>
+</details>
+</div>
+<div class="panel">
+<details>
+<summary style="cursor:pointer;font-size:13px;color:var(--muted)">本批新增：填充 / 模式 / 容器 / 密钥导出 使用说明</summary>
+<div class="status" style="margin-top:10px;line-height:1.9">
+<b>填充模式（9 种）</b>：PKCS7、PKCS5（8 字节块）、ISO 10126（随机）、ANSI X9.23、ISO/IEC 7816-4、TBC（尾位补码）、ESP（RFC 4303）、Zero、无填充。<br>
+<b>填充校验</b>：默认<b>严格</b>——填充字节不符合规范就直接失败，这是防御 Padding Oracle 的正确姿势。切到<b>宽松</b>会容忍错误填充，但那本身就构成了攻击面，仅供排查旧数据。<br><br>
+<b>新增加密模式</b>：<br>
+· <b>PCBC</b>：错误会向后传播，一个字节损坏污染后续全部块。<br>
+· <b>LRW</b>：IEEE P1619，XTS 的前身，tweak 用 GF(2<sup>128</sup>) 乘法算，IV 框填的是起始 tweak。<br>
+· <b>CTS-CS1/CS2/CS3</b>：密文窃取，<b>密文长度 = 明文长度</b>（不填充）。CS1 是 NIST 变体，CS3 是 Kerberos5（RFC 3962）。明文至少 1 个块。<br>
+· <b>CFB8 / CFB1</b>：SP 800-38A 的 CFB 变体，按字节 / 按比特处理，无需填充。CFB1 极慢，仅小数据。<br>
+· XTS / LRW 只支持 128 位块算法；DES、Blowfish、IDEA 会明确拒绝。<br><br>
+<b>封装格式</b>：<br>
+· <b>OpenSSL 兼容</b>：输出 <code>Salted__</code> + salt + 密文，密钥走 EVP_BytesToKey(SHA-256)，可与 <code>openssl enc -md sha256</code> 互通。<br>
+· <b>CryptoJS JSON</b>：<code>{ct, iv, s}</code>，密钥走 EVP_BytesToKey(MD5)，与 CryptoJS 默认一致。<br>
+· <b>PGP ASCII Armor</b>：带 CRC24 校验，篡改会被抓到。<br>
+· <b>JWE</b>：RFC 7516 紧凑序列化（alg=dir + A256GCM），五段式。<br>
+· 注意：PGP / JWE 不携带 IV，加密后请把 IV 框里的值一并保存。<br><br>
+<b>Salt</b>：填了就参与密钥派生（可与对端约定固定值）；选 OpenSSL / CryptoJS 容器时会自动生成并回写。<br>
+<b>AEAD 标签长度</b>：默认 16 字节；8 字节及以下安全性明显下降，仅用于互通或测试。<br>
+<b>nonce 复用检测（GCM / CCM）</b>：加密时登记用过的 (密钥指纹, nonce)，第二次撞上就直接中止。同一密钥 + 同一 nonce 加密两段明文，会泄露两段明文的异或，并能反推出 GHASH 的认证密钥 H 从而伪造标签——这是 GCM 最严重的误用。记录存在浏览器本地，<b>只保存密钥的 SHA-256 指纹，不保存密钥本身或任何明文</b>。切换密钥或清空记录后该组合可再次使用。<br>
+· <b>阻止</b>（默认）：发现复用立即中止；<b>仅警告</b>：照常加密但红字提示；<b>关闭</b>：不检测。<br>
+· 另一个相关改动：IV 框里<b>自动填入</b>的值只供你保存，再次加密会自动换新的（不会误用上一次的 nonce）；只有<b>你手动填写或修改过</b>的 IV 才会被实际采用。<br>
+· SIV 是确定性 AEAD，本身抗 nonce 误用，不参与检测。<br><br>
+<b>密钥对导出</b>：算法选「密钥工具 → 密钥对导出（JWK / PEM）」，参数栏填 <code>p256</code> / <code>p384</code> / <code>p521</code> / <code>rsa2048</code>，点【加密】即输出 JWK 与 PEM 两种格式。<span style="color:#c0392b">私钥 PEM 高度敏感，切勿外传。</span>
+</div>
+</details>
+</div>
 </body>
 </html>

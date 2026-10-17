@@ -1068,7 +1068,11 @@ function u32be(v) {
 }
 
 function pbkdf2Generic(hashFn, outLen, pw, salt, iterations, dkLen) {
-  var blockSize = 64;
+  /* HMAC 的 blockSize 由【具体哈希】决定，不能写死 64：
+     SHA-512 / SHA-384 是 128 字节，SHA-256 / SHA-224 / SM3 才是 64。
+     早先写死 64，导致 PBKDF2-SHA-512 / SHA-384 的回退路径（原生不可用时）
+     算出与 RFC 8018 不一致的结果 —— 浏览器走 WebCrypto 掩盖了这个缺陷。 */
+  var blockSize = (outLen > 32) ? 128 : 64;
   var nBlocks = Math.ceil(dkLen / outLen);
   var out = new Uint8Array(nBlocks * outLen);
   var pwb = (typeof pw === 'string') ? strToBytes(pw) : pw;

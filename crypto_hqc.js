@@ -431,7 +431,9 @@
     var theta = kTheta.subarray(32, 64);
     var ct2 = pkeEncrypt(P, ek, m, theta);
     var ok = ct2.length === ctBody.length;
-    if (ok) for (var i = 0; i < ct2.length; i++) if (ct2[i] !== ctBody[i]) { ok = false; break; }
+    /* 常量时间比较：不能 for+break，首个不匹配字节就退出会通过计时
+       泄漏「密文是否被篡改」，进而配合隐式拒绝形成解密预言机。 */
+    if (ok) { var diff = 0; for (var i = 0; i < ct2.length; i++) diff |= (ct2[i] ^ ctBody[i]); ok = (diff === 0); }
     if (ok) return kTheta.subarray(0, 32);
     /* 隐式拒绝：不返回错误，返回一个伪随机值 */
     return hashJ(concatBytes(sigma, ct));

@@ -171,7 +171,12 @@ function vCompress(P) {
 
 /* 解压缩：32 字节大端 x → 曲线点（含子群校验） */
 function vDecompress(hexStr) {
-  var x = BigInt('0x' + hexStr) % V_Q;
+  var xRaw = BigInt('0x' + hexStr);
+  /* 拒绝非规范编码：x 必须已经是 < V_Q 的规范值。
+     早先直接 % V_Q 会把 >= Q 的输入静默归约后照常接受，
+     同一个点因此有多种编码表示，可被用于承诺/证明的延展性攻击。 */
+  if (xRaw >= V_Q) return null;
+  var x = xRaw % V_Q;
   if (!vInSubgroupLegendre(x)) return null;
   return vPointFromX(x);
 }

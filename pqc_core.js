@@ -261,7 +261,12 @@ function mlkemDecaps(k, dk, c) {
   var g = sha3_512split(concatBytes(mp, h));
   var Kbar2 = g[0], r2 = g[1];
   var c2 = mlkemPKEEncrypt(k, ek, mp, r2);
-  var same = c2.length === c.length;
-  if (same) for (var i = 0; i < c.length; i++) if (c2[i] !== c[i]) { same = false; break; }
+  /* 常量时间比较：不能用 for+break，那会在首个不匹配字节处提前退出，
+     通过计时泄漏「密文是否被篡改」，构成 FO 变换的选择密文攻击面。
+     长度不同时先做异或置位，再逐字节累积差异，全程无分支。 */
+  var diff = c2.length ^ c.length;
+  var n = c.length < c2.length ? c.length : c2.length;
+  for (var i = 0; i < n; i++) diff |= c2[i] ^ c[i];
+  var same = (diff === 0);
   return same ? Kbar2 : shake256Digest(concatBytes(z, c), 32);
 }

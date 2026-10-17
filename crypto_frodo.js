@@ -141,7 +141,10 @@
   }
   function ctSelect(a, b, len, selector) {
     var r = new Uint8Array(len);
-    for (var i = 0; i < len; i++) r[i] = (selector === 0 ? a[i] : b[i]) & 0xFF;
+    /* 掩码选择，不用三元表达式：三元可能被编译成分支，与函数名 ct 不符。
+       m = 0 时取 a，m = 全 1 时取 b。 */
+    var m = -(selector !== 0 ? 1 : 0);
+    for (var i = 0; i < len; i++) r[i] = (a[i] ^ (m & (a[i] ^ b[i]))) & 0xFF;
     return r;
   }
 

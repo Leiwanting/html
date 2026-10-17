@@ -92,10 +92,12 @@ function unpad7816(data, bs) {
 }
 
 function padTBC(data, bs) {
+  /* p 的取值范围是 1..bs，永不为 0：data.length 正好是 bs 的整数倍时
+     补【一整块】。这不是笔误 —— TBC 靠「填充字节 = 末字节按位取反」
+     识别，若不补，去填充时会把真实数据的末字节当成填充码。 */
   var p = bs - (data.length % bs);
   var out = new Uint8Array(data.length + p);
   out.set(data);
-  if (p === 0) return out;
   var base = data.length > 0 ? data[data.length - 1] : 0;
   var code = (~base) & 0xFF;
   for (var i = data.length; i < out.length; i++) out[i] = code;
@@ -387,8 +389,6 @@ function ctsDec(cipher, bs, blockFn, invFn, iv, variant) {
   }
   /* T = E((P_n||0) ⊕ C(nFull))，所以 (P_n||0) = D(T) ⊕ C(nFull) */
   var dt = invFn.dec(t);
-  var pnPadded = new Uint8Array(bs);
-  for (var i = 0; i < bs; i++) pnPadded[i] = dt[i] ^ prefix[i === 0 ? 0 : (i < r ? i : 0)];
   /* C(nFull) 的前 r 字节已知（prefix），后 bs-r 字节未知，
      但 P_n 只有 r 字节有效，所以只需用 prefix 部分恢复 P_n 的前 r 字节 */
   var pn = new Uint8Array(r);
@@ -1080,25 +1080,20 @@ function pbkdf2Generic(hashFn, outLen, pw, salt, iterations, dkLen) {
     ipad[i] = kb ^ 0x36; opad[i] = kb ^ 0x5c;
   }
   for (var b = 1; b <= nBlocks; b++) {
-    var U = hashFn(concatBytes(ipad, concatBytes(salt, u32be(b))));
+    /* 每一轮 Ui 都必须是【完整 HMAC】：H(opad || H(ipad || msg))。
+       早先只在最后一次补 opad，中间迭代少了 opad 这一层，
+       结果与 RFC 8018 / PKCS#5 v2 及其他库不兼容 ——
+       浏览器里因为走 WebCrypto 而掩盖，SM3 与回退路径则直接算错。 */
+    var U = hashFn(concatBytes(opad, hashFn(concatBytes(ipad, concatBytes(salt, u32be(b))))));
     var T = new Uint8Array(U);
     for (var i = 1; i < iterations; i++) {
-      U = hashFn(concatBytes(ipad, U));
+      U = hashFn(concatBytes(opad, hashFn(concatBytes(ipad, U))));
       for (var j = 0; j < outLen; j++) T[j] ^= U[j];
     }
-    var inner = hashFn(concatBytes(ipad, concatBytes(salt, u32be(b))));
-    T = new Uint8Array(U0(inner));
-    U = inner;
-    for (var i = 1; i < iterations; i++) {
-      U = hashFn(concatBytes(ipad, U));
-      for (var j = 0; j < outLen; j++) T[j] ^= U[j];
-    }
-    var res = hashFn(concatBytes(opad, T));
-    out.set(res.subarray(0, Math.min(outLen, dkLen - (b - 1) * outLen)), (b - 1) * outLen);
+    out.set(T.subarray(0, Math.min(outLen, dkLen - (b - 1) * outLen)), (b - 1) * outLen);
   }
   return out.subarray(0, dkLen);
 }
-function U0(a) { return a; }
 function pbkdf2Sm3(pw, salt, iterations, dkLen) {
   if (typeof sm3Digest !== 'function') throw new Error('SM3 不可用');
   return pbkdf2Generic(sm3Digest, 32, pw, salt, iterations, dkLen);
@@ -1329,8 +1324,6 @@ async function x25519GenKeyPair() {
   return { pub: x25519Base(sk), priv: sk, via: 'purejs' };
 }
 async function x25519Derive(myPriv, peerPub) {
-  if (myPriv && myPriv.length === 32 && x25519WebCryptoAvailable()) {
-  }
   if (myPriv.length === 32) {
     return x25519ScalarMult(myPriv, peerPub);
   }

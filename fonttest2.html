@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>字体自检 v2 · 定量测量</title>
+<style>
+  @font-face{font-family:'OrbitLocal';src:url('fonts/Orbitron-700.woff2') format('woff2');font-weight:700;font-display:block}
+  body{font-family:-apple-system,sans-serif;margin:0;padding:14px;background:#fafafa;color:#222}
+  h1{font-size:17px;margin:0 0 10px}
+  .card{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;margin-bottom:10px}
+  .t{font-size:12px;color:#777;margin-bottom:8px}
+  .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;border-bottom:1px dashed #eee}
+  .row:last-child{border-bottom:none}
+  .ok{color:#0a0;font-weight:700}.bad{color:#d00;font-weight:700}.warn{color:#c80;font-weight:700}
+  .big0{font-size:110px;line-height:1.15}
+  pre{background:#f5f5f5;padding:8px;border-radius:6px;font-size:11px;overflow:auto;max-height:150px;white-space:pre-wrap}
+  .lbl{font-size:11px;color:#999}
+</style>
+</head>
+<body>
+<h1>字体自检 v2 · 定量测量</h1>
+
+<div class="card">
+  <div class="t">1. canvas 测宽：同一串文字在 100px 下的渲染宽度</div>
+  <div class="row"><span>sans-serif</span><span id="w-sans">…</span></div>
+  <div class="row"><span>OrbitLocal（本地 woff2）</span><span id="w-orb">…</span></div>
+  <div class="row"><span>结论</span><span id="verdict">…</span></div>
+</div>
+
+<div class="card">
+  <div class="t">2. 大字号对比：Orbitron 的 0 是方框带斜杠，系统字体是椭圆</div>
+  <div class="big0" style="font-family:'OrbitLocal',serif">0 8</div>
+  <div class="lbl">↑ 本地 Orbitron</div>
+  <div class="big0" style="font-family:sans-serif;font-weight:700">0 8</div>
+  <div class="lbl">↑ 系统字体</div>
+</div>
+
+<div class="card">
+  <div class="t">3. 已加载字体清单</div>
+  <pre id="faces">…</pre>
+</div>
+
+<div class="card">
+  <div class="t">4. 对照组：能否直连 Google Fonts</div>
+  <div class="row"><span>fonts.googleapis.com</span><span id="g-google">测试中…</span></div>
+</div>
+
+<script>
+function set(id,v,cls){var e=document.getElementById(id);e.textContent=v;if(cls)e.className=cls}
+var TEXT='07:45:16 PM';
+function measure(family){
+  var c=document.createElement('canvas');
+  var ctx=c.getContext('2d');
+  ctx.font='700 100px '+family;
+  return ctx.measureText(TEXT).width;
+}
+document.fonts.ready.then(function(){
+  var sans=measure('sans-serif');
+  var orb=measure("'OrbitLocal'");
+  set('w-sans', sans.toFixed(1)+' px');
+  set('w-orb', orb.toFixed(1)+' px');
+  var diff=Math.abs(sans-orb)/sans*100;
+  if(diff>4){ set('verdict','差异 '+diff.toFixed(1)+'% -> Orbitron 已生效','ok'); }
+  else { set('verdict','差异 '+diff.toFixed(1)+'% -> 字体没生效（浏览器在用回退字体）','bad'); }
+  var list=[];
+  document.fonts.forEach(function(f){ list.push(f.family+'  w='+f.weight+'  '+f.status); });
+  document.getElementById('faces').textContent = list.length? list.join('\n') : '（空）';
+});
+fetch('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap',{mode:'cors'})
+  .then(function(r){ set('g-google','HTTP '+r.status+(r.ok?' 可访问':' 异常'), r.ok?'ok':'bad'); })
+  .catch(function(){ set('g-google','请求失败：被墙或断网','warn'); });
+</script>
+</body>
+</html>

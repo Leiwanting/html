@@ -11,7 +11,7 @@
  * ⚠ 改名时记得同步三处：本文件常量、index.html 的版本徽章与版本卡、
  *   CHANGELOG 的版本表。曾因只改一处导致界面与常量不一致。
  * ============================================================ */
-var APP_VERSION = '1.0.0';
+var APP_VERSION = '1.1.0';
 var APP_NAME = 'Aegis';
 var APP_CODENAME = 'AGS';
 var APP_TAGLINE = '268 种算法 · 零外部依赖';

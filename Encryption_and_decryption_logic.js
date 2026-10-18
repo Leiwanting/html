@@ -14,7 +14,7 @@
 var APP_VERSION = '1.0.0';
 var APP_NAME = 'Aegis';
 var APP_CODENAME = 'AGS';
-var APP_TAGLINE = '149 种算法 · 零外部依赖';
+var APP_TAGLINE = '268 种算法 · 零外部依赖';
 var BUILD_INFO = { algos: 268, stress: 2222, selfTest: 43 };
 
 

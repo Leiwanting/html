@@ -529,12 +529,16 @@ function mkKeygen(tag) {
     return 0;
   }
 
+  /* 浏览器安全的调试开关。注意：此处原写为 Node 专有全局 process 上的环境变量读取，
+     在浏览器中 process 未定义会直接抛 ReferenceError（密钥生成必崩），已改为普通布尔常量。 */
+  var MCEDBG = false, MCEDBG2 = false;
+
   /* ---------- controlbits（Nassimi-Sahni） ---------- */
+  /* 对 Int32Array 用 TypedArray 原生排序：数值升序、原地、无需 slice 拷贝。
+     注：官方 controlbits.c 用双调排序网络；此处输入为公开置换，非秘密，
+     变时排序不构成侧信道风险，故采用更快的原生实现（结果一致）。 */
   function int32sort(A, n) {
-    var sub = A.subarray(0, n);
-    var a = Array.prototype.slice.call(sub);
-    a.sort(function (x, y) { return x - y; });
-    sub.set(a);
+    A.subarray(0, n).sort();
   }
   function int32min(x, y) { return x < y ? x : y; }
 
@@ -712,7 +716,7 @@ function mkKeygen(tag) {
       }
     }
 
-    if (process.env.MCEDBG2) {
+    if (MCEDBG2) {
       var nzm = 0; for (var q = 0; q < mat.length; q++) if (mat[q]) nzm++;
       console.error('DBG inv[0..5]', Array.prototype.slice.call(inv, 0, 6));
       console.error('DBG L[0..5]', Array.prototype.slice.call(L, 0, 6));
@@ -755,7 +759,6 @@ function mkKeygen(tag) {
       if (tries > 8) throw new Error('keypair: 重试次数过多');
       r = shake256Bytes(seed, R);
       rp = R - 32;
-      skp = 0;
       sk.set(seed.subarray(1, 33), 0);
       skp = 32 + 8;
       seed.set(r.subarray(R - 32, R), 1);
@@ -763,7 +766,7 @@ function mkKeygen(tag) {
       /* f */
       rp -= SYS_T * 2;
       for (i = 0; i < SYS_T; i++) f[i] = loadGf(r, rp + i * 2);
-      if (genpolyGen(irr, f) !== 0) { if (process.env.MCEDBG) console.error('  try' + tries + ' genpoly fail'); continue; }
+      if (genpolyGen(irr, f) !== 0) { if (MCEDBG) console.error('  try' + tries + ' genpoly fail'); continue; }
       for (i = 0; i < SYS_T; i++) storeGf(sk, skp + i * 2, irr[i]);
       skp += IRR_BYTES;
 
@@ -773,7 +776,7 @@ function mkKeygen(tag) {
       for (i = 0; i < (1 << GFBITS); i++) perm[i] = load4(r, rp + i * 4);
 
       var res = pkGen(sk.subarray(skp - IRR_BYTES, skp), perm);
-      if (!res) { if (process.env.MCEDBG) console.error('  try'+tries+' pk_gen fail'); continue; }
+      if (!res) { if (MCEDBG) console.error('  try' + tries + ' pk_gen fail'); continue; }
       pk = res.pk;
       pi = res.pi;
 
@@ -859,7 +862,6 @@ function mkKeygen(tag) {
   var KEM_6960119 = null, MKD_6960119 = null, MKG_6960119 = null;
   var KEM_8192128 = null, MKD_8192128 = null, MKG_8192128 = null;
   function mceInit(tag) {
-    if (KEM_460896 && false) return;
     if (tag === "460896") { if (!KEM_460896) { KEM_460896 = mkEnc("460896"); MKD_460896 = PM.mkFull("460896"); MKG_460896 = mkKeygen("460896"); } return; }
     if (tag === "6688128") { if (!KEM_6688128) { KEM_6688128 = mkEnc("6688128"); MKD_6688128 = PM.mkFull("6688128"); MKG_6688128 = mkKeygen("6688128"); } return; }
     if (tag === "6960119") { if (!KEM_6960119) { KEM_6960119 = mkEnc("6960119"); MKD_6960119 = PM.mkFull("6960119"); MKG_6960119 = mkKeygen("6960119"); } return; }

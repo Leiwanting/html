@@ -436,7 +436,6 @@ function mkFull(tag){
 /* Classic McEliece 全参数集密钥生成 —— 逐行移植 PQClean clean 参考实现
    参考: operations.c (keypair) / sk_gen.c (genpoly_gen) / pk_gen.c / controlbits.c
 */
-var PARAMS = PM.PARAMS;
 
 /* 纯 JS SHAKE256（Node 的 crypto shake256 输出上限 32 字节，不足以生成 r） */
 function mkKeygen(tag) {
@@ -750,7 +749,7 @@ function mkKeygen(tag) {
     seed.set(skPrf32.subarray(0, 32), 1);
     var i, rp, skp, r;
     var f = new Int32Array(SYS_T), irr = new Int32Array(SYS_T);
-    var pi = new Int16Array(1 << GFBITS);
+    var pi; /* 由 pkGen 返回的 res.pi 赋值；此处不预分配（原为 new Int16Array(1<<GFBITS)，从未被读取即被覆盖） */
     var sk = new Uint8Array(P.SK), pk = null;
     var tries = 0;
 
@@ -922,7 +921,6 @@ function mkKeygen(tag) {
         }
         if (!seed) seed = mceRnd(32);
         var res = MKG_460896.keypair(seed);
-        if (!res) throw new Error("密钥生成失败（概率极低），请重试");
         if (onlySk) return bytesOut(res.sk, fmt);
         return bytesOut(res.pk, fmt) + "\n::K::" + bytesOut(res.sk, fmt);
       },
@@ -967,7 +965,6 @@ function mkKeygen(tag) {
         }
         if (!seed) seed = mceRnd(32);
         var res = MKG_6688128.keypair(seed);
-        if (!res) throw new Error("密钥生成失败（概率极低），请重试");
         if (onlySk) return bytesOut(res.sk, fmt);
         return bytesOut(res.pk, fmt) + "\n::K::" + bytesOut(res.sk, fmt);
       },
@@ -1012,7 +1009,6 @@ function mkKeygen(tag) {
         }
         if (!seed) seed = mceRnd(32);
         var res = MKG_6960119.keypair(seed);
-        if (!res) throw new Error("密钥生成失败（概率极低），请重试");
         if (onlySk) return bytesOut(res.sk, fmt);
         return bytesOut(res.pk, fmt) + "\n::K::" + bytesOut(res.sk, fmt);
       },
@@ -1057,7 +1053,6 @@ function mkKeygen(tag) {
         }
         if (!seed) seed = mceRnd(32);
         var res = MKG_8192128.keypair(seed);
-        if (!res) throw new Error("密钥生成失败（概率极低），请重试");
         if (onlySk) return bytesOut(res.sk, fmt);
         return bytesOut(res.pk, fmt) + "\n::K::" + bytesOut(res.sk, fmt);
       },

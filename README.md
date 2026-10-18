@@ -2,11 +2,11 @@
 
 一个**纯前端、离线可用**的密码学工具箱，单页 HTML 应用，无需后端、无需联网、不上传任何数据。
 
-当前内置 **250 个算法条目**，覆盖编码、哈希、对称加密、非对称、后量子、椭圆曲线与高级代数、门限密码、认证加密、校验和等门类。
+当前内置 **268 个算法条目**，覆盖编码、哈希、对称加密、非对称、后量子、椭圆曲线与高级代数、门限密码、认证加密、校验和等门类。
 
 - **许可**：MIT License（见 `LICENSE`）
 - **第三方来源**：见 `THIRD_PARTY_NOTICES.md`
-- **版本**：v1.0.0「Aegis / AGS」
+- **版本**：v1.1.0「Aegis / AGS」
 
 ---
 
@@ -30,7 +30,7 @@ python3 -m http.server 8000   # 然后访问 http://localhost:8000
 
 - **纯前端**：所有运算在浏览器内完成，密钥与明文**不会离开本机**
 - **离线可用**：不依赖 CDN、不请求网络
-- **250 个算法**：从古典密码到后量子（ML-KEM / ML-DSA / SPHINCS+ / HQC / McEliece / FrodoKEM）
+- **268 个算法**：从古典密码到后量子（ML-KEM / ML-DSA / SPHINCS+ / HQC / sntrup761 / McEliece 全 5 参数集 / FrodoKEM）
 - **国密完整**：SM2（签名/加密/密钥协商）、SM3、SM4、SM9（标识密码）、ZUC-128
 - **官方向量验证**：核心算法均对照 RFC / NIST / BIP / 3GPP / 官方参考实现验证
 - **内置自检**：界面内置自检按钮，可一键检查各算法可用性
@@ -41,13 +41,18 @@ python3 -m http.server 8000   # 然后访问 http://localhost:8000
 
 | 门类 | 数量 | 代表 |
 |---|---|---|
-| 编码 | 24 | Base64/32/58/85/91、Bech32/32m、BIP-39、Punycode |
-| 单向哈希 | 64 | SHA-2/3、BLAKE2/3、SM3、Streebog、Skein、Tiger、Whirlpool、Argon2 |
+| 单向哈希 | 75 | SHA-2/3、BLAKE2/3、SM3、Streebog、Skein、Tiger、Whirlpool、Argon2 |
 | 对称加密 | 63 | AES/ARIA/Camellia/SM4/Serpent/Twofish、Adiantum、Ascon、ChaCha20 |
-| 非对称加密 | 30 | RSA-OAEP/PSS、SM2、SM9、IBE、SPAKE2+、HPKE |
-| 后量子密码 | 15 | ML-KEM、ML-DSA、SPHINCS+、HQC、McEliece、FrodoKEM |
+| 非对称加密 | 31 | RSA-OAEP/PSS、SM2、SM9、IBE、SPAKE2+、SRP-6a、HPKE |
+| 后量子密码 | 26 | ML-KEM/DSA、SPHINCS+、HQC、sntrup761、McEliece（全 5 参数集）、FrodoKEM |
+| 编码 | 24 | Base64/32/58/85/91、Bech32/32m、BIP-39、Punycode |
 | 椭圆曲线与高级代数 | 22 | BLS12-381/377、BN254、Ed448/X448、KZG、Verkle、Bulletproofs |
-| 校验和 / 认证加密 / 门限 / 古典 / 签名 / 密钥工具 | 32 | CRC 系列、Ascon-128a、Shamir、Feldman VSS、EdDSA、keygen |
+| 校验和 | 10 | CRC-8/16/24/32/32C/64、Adler32、FNV-1a |
+| 古典密码 | 6 | 维吉尼亚、Atbash、仿射、栅栏、Playfair、培根 |
+| 分布式与门限密码 | 4 | Shamir 拆分/还原、Feldman VSS、Pedersen DKG |
+| 数字签名 | 3 | ECDSA、DSA、SM2 签名 |
+| 密钥工具 | 3 | keygen（19 种）、密钥导出、X25519 |
+| 认证加密 | 1 | Ascon-128a |
 
 完整清单见 `算法清单.txt`（项目根目录，含实测耗时）。
 
@@ -58,7 +63,7 @@ python3 -m http.server 8000   # 然后访问 http://localhost:8000
 本项目对算法实现采取「**没有权威向量就不上线**」的原则：
 
 - 优先使用 **RFC / NIST CAVP / BIP / 3GPP / 官方参考实现**提供的测试向量
-- 拿不到官方向量时，编译官方 C 参考实现在沙盒内自产向量（如 McEliece、FrodoKEM、Adiantum）
+- 拿不到官方向量时，编译官方 C 参考实现在沙盒内自产向量（如 McEliece、FrodoKEM、sntrup761、Adiantum）
 - 关键算法做**双向**验证：不仅自己往返通过，还与独立实现（Python `gmalg`、`pycryptodome`、
   Botan、Google Adiantum 等）交叉比对字节一致性
 
@@ -140,7 +145,7 @@ bls_const.js / pqc_*.js        配对常量与后量子核心
 algo_picker.js                 算法选择逻辑
 t_*.js                         测试脚本（Node 运行）
 testvectors/                   固化的官方向量
-attic/                         历史备份与开发中间产物（不参与分发）
+（历史备份与开发中间产物已清理，仓库中不再包含）
 LICENSE                        MIT 许可
 THIRD_PARTY_NOTICES.md         第三方来源与许可声明
 ```

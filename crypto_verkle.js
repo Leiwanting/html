@@ -445,10 +445,9 @@ function vPointToHex(P) {
     name: 'Verkle 树根承诺（EIP-6800）',
     group: '椭圆曲线与高级代数',
     key: false, keyLen: 0, dec: false,
-    info: '按 EIP-6800 计算 Verkle 树的根承诺。key 与 value 均为 32 字节十六进制，' +
-      '每行一组，格式为 key 或 key:value（省略 value 时 value = key）。例：' +
-      '输入 SHA256(0x00…00‖0) 这类 32 字节键。输出根承诺点与 root_hash（32 字节小端）。' +
-      '已用 rust-verkle 官方 fuzzer 向量校验。',
+    info: '按 EIP-6800 算 Verkle 状态根，每行 key:value（各 32 字节十六进制）。' +
+      '输出 state_root = 根承诺点压缩序列化，与 geth / rust-verkle 一致。' +
+      '向量：rust-verkle fuzzer + devnet6 创始状态根。',
     enc: function (msgBytes, _key, _arg) {
       var txt = new TextDecoder().decode(msgBytes);
       var lines = txt.split(/\r?\n/).map(function (s) { return s.trim(); })
@@ -468,16 +467,17 @@ function vPointToHex(P) {
       var ms = Date.now() - t0;
       var rh = vMapToScalar(R);
       return {
-        text: vScalarLE(rh),
+        text: vCompress(R),
         textInfo: '键数量：' + entries.length +
-          '\nroot_hash（Fr 小端 32 字节） = ' + vScalarLE(rh) +
+          '\nstate_root（根承诺点压缩序列化，32 字节） = ' + vCompress(R) +
+          '\nroot_hash = map_to_scalar_field（Fr 小端，仅供折叠进父节点） = ' + vScalarLE(rh) +
           '\n根承诺点 x = ' + vPointToHex(R).slice(0, 64) +
           '\n根承诺点 y = ' + vPointToHex(R).slice(64) +
-          '\n压缩表示 = ' + vCompress(R) +
           '\n耗时 ' + ms + ' ms' +
+          '\n\n⚠ 以太坊区块里的状态根取上面的 state_root，不是 root_hash。' +
           '\n\n结构：stem(31B)‖suffix(1B)；每个 value 拆为 lower(+2^128) 与 upper 两个标量；' +
           '\n扩展节点 = Commit(1, stem, C1, C2)；内部节点 = Commit(256 个子根标量)。' +
-          '\n规范：EIP-6800；向量：rust-verkle trie_fuzzer.rs。'
+          '\n规范：EIP-6800；向量：rust-verkle trie_fuzzer.rs 与 devnet6 创始状态根。'
       };
     }
   });

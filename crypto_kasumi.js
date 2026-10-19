@@ -98,8 +98,8 @@
     return EK;
   }
 
-  function kasumiEnc(pt, key) {
-    var EK = keySchedule(key);
+  /* 预计算版：EK 复用（只读），避免每块重算 8×8 轮子密钥 */
+  function kasumiEncKS(pt, EK) {
     var B0 = (pt[0]<<8)|pt[1], B1 = (pt[2]<<8)|pt[3], B2 = (pt[4]<<8)|pt[5], B3 = (pt[6]<<8)|pt[7];
     var j, R, L;
     for (j = 0; j != 8; j += 2) {
@@ -121,8 +121,7 @@
     return new Uint8Array([B0>>8, B0&255, B1>>8, B1&255, B2>>8, B2&255, B3>>8, B3&255]);
   }
 
-  function kasumiDec(ct, key) {
-    var EK = keySchedule(key);
+  function kasumiDecKS(ct, EK) {
     var B0 = (ct[0]<<8)|ct[1], B1 = (ct[2]<<8)|ct[3], B2 = (ct[4]<<8)|ct[5], B3 = (ct[6]<<8)|ct[7];
     var j, R, L;
     for (j = 0; j != 8; j += 2) {
@@ -145,6 +144,11 @@
     return new Uint8Array([B0>>8, B0&255, B1>>8, B1&255, B2>>8, B2&255, B3>>8, B3&255]);
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { kasumiEnc: kasumiEnc, kasumiDec: kasumiDec };
-  global.KASUMI = { kasumiEnc: kasumiEnc, kasumiDec: kasumiDec };
+  function kasumiEnc(pt, key) { return kasumiEncKS(pt, keySchedule(key)); }
+  function kasumiDec(ct, key) { return kasumiDecKS(ct, keySchedule(key)); }
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = { kasumiEnc: kasumiEnc, kasumiDec: kasumiDec,
+    keySchedule: keySchedule, kasumiEncKS: kasumiEncKS, kasumiDecKS: kasumiDecKS };
+  global.KASUMI = { kasumiEnc: kasumiEnc, kasumiDec: kasumiDec,
+    keySchedule: keySchedule, kasumiEncKS: kasumiEncKS, kasumiDecKS: kasumiDecKS };
 })(typeof window !== 'undefined' ? window : globalThis);

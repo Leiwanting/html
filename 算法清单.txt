@@ -1,4 +1,4 @@
-【编码】(24)
+【编码】(25)
   Base64  【base64】
   Base32  【base32】
   Base58  【base58】
@@ -9,8 +9,8 @@
   16 进制编码  【hex】
   ROT13  【rot13】
   ASCII 移位 / 凯撒  【caesar】
-  摩尔斯电码  【morse】
-  二进制  【binary】
+  �清单已生成，算法 296
+ 二进制  【binary】
   八进制  【octal】
   Base45  【base45】
   Base62  【base62】
@@ -23,8 +23,15 @@
   Bech32 地址编码（BIP-173）  【bech32】
   Bech32m 地址编码（BIP-350）  【bech32m】
   BIP-39 助记词  【bip39-mnemonic】
-
-【单向哈希】(75)
+  Base58Check 编码（比特币地址）  【base58check】
+【古典密码】(6)
+  维吉尼亚密码  【vigenere】
+  Atbash 密码  【atbash】
+  仿射密码  【affine】
+  栅栏密码  【railfence】
+  Playfair 密码  【playfair】
+  培根密码  【bacon】
+【单向哈希】(84)
   MD5  【md5】
   SHA-1  【sha1】
   SHA-224  【sha224】
@@ -100,8 +107,16 @@
   TLS 1.2 PRF（RFC 5246 §5）  【tls12-prf】
   TLS PRF（TLS 1.0/1.1，MD5⊕SHA-1）  【tls-prf】
   ANSI X9.42 PRF  【x942-prf】
-
-【对称加密】(63)
+  bcrypt-pbkdf（OpenSSH 口令派生）  【bcrypt-pbkdf】
+  Comb4P(MD4,MD5) 哈希组合器  【comb4p-md4md5】
+  Comb4P(SHA-1,RIPEMD-160) 哈希组合器  【comb4p-sha1rmd160】
+  ChaCha_RNG（Botan 专有 DRBG）  【chacha-rng】
+  Telegram auth_key_id（auth_key→密钥标识）  【mtproto-authkeyid】
+  Parallel(MD5,SHA-160) 组合哈希  【parallel-md5-sha1】
+  Parallel(SHA-256,SHA-512) 组合哈希  【parallel-sha256-512】
+  Passhash9 口令哈希（Botan $9$）  【passhash9】
+  Passhash9 校验（比对口令）  【passhash9-verify】
+【对称加密】(69)
   AES-128  【aes128】
   AES-192  【aes192】
   AES-256  【aes256】
@@ -165,8 +180,13 @@
   XChaCha12 流密码  【xchacha12】
   XChaCha8 流密码  【xchacha8】
   Threefish-512（Skein 核心可调分组密码）  【threefish512】
-
-【非对称加密】(31)
+  LION（SHA-1+RC4，64 字节块）  【lion】
+  MTProto 2.0 消息加密（Telegram）  【mtproto-enc】
+  MTProto 2.0 消息解密（Telegram）  【mtproto-dec】
+  MTProto 1.0 消息加密（Telegram，已废弃）  【mtproto1-enc】
+  MTProto 1.0 消息解密（Telegram，已废弃）  【mtproto1-dec】
+  Cascade(Serpent,AES-256) 级联加密  【cascade-serpent-aes256】
+【非对称加密】(33)
   RSA (RSA-OAEP)  【rsa】
   RSA-PSS 签名  【rsa-pss】
   ECDSA (P-256)  【ecdsa-p256】
@@ -197,26 +217,18 @@
   IBE 用户私钥提取  【ibe-extract】
   IBE 加密（向某身份）  【ibe-encrypt】
   IBE 解密（用自己的私钥）  【ibe-decrypt】
+  RSA-KEM 封装（ISO 18033-2）  【rsa-kem-encaps】
+  RSA-KEM 解封装（ISO 18033-2）  【rsa-kem-decaps】
   SRP-6a 远程口令协议（RFC 5054）  【srp6a】
-
 【数字签名】(3)
   ECDSA（椭圆曲线签名）  【ecc-ecdsa】
   DSA（离散对数签名）  【dsa】
   SM2 签名（国密）  【sm2-sign】
-
-【密钥工具】(3)
+【密钥工具】(4)
   密钥生成（19 种：ECC/SM2/Ed25519/X25519/Ed448/X448/RSA/…）  【keygen】
   密钥对导出（JWK / PEM）  【key-export】
   X25519（密钥交换）  【x25519】
-
-【古典密码】(6)
-  维吉尼亚密码  【vigenere】
-  Atbash 密码  【atbash】
-  仿射密码  【affine】
-  栅栏密码  【railfence】
-  Playfair 密码  【playfair】
-  培根密码  【bacon】
-
+  TLS 1.3 HKDF-Expand-Label（RFC 8446）  【hkdf-expand-label】
 【校验和】(10)
   CRC32  【crc32】
   CRC32C (Castagnoli)  【crc32c】
@@ -228,8 +240,7 @@
   CRC64-XZ（Go ECMA）  【crc64xz】
   FNV-1a 32  【fnv1a32】
   CRC-24（OpenPGP，RFC 4880）  【crc24】
-
-【后量子密码】(26)
+【后量子密码】(29)
   ML-KEM-512（后量子 KEM）  【mlkem512】
   ML-KEM-768（后量子 KEM）  【mlkem768】
   ML-KEM-1024（后量子 KEM）  【mlkem1024】
@@ -256,8 +267,10 @@
   sntrup761 密钥生成  【sntrup761-keygen】
   sntrup761 封装（公钥加密）  【sntrup761-encaps】
   sntrup761 解封装（私钥解密）  【sntrup761-decaps】
-
-【椭圆曲线与高级代数】(22)
+  XMSS 验签（RFC 8391 后量子哈希签名）  【xmss-verify】
+  XMSS 签名（RFC 8391，仅 h=10）  【xmss-sign】
+  XMSS 密钥生成（RFC 8391，仅 h=10）  【xmss-keygen】
+【椭圆曲线与高级代数】(23)
   BLS 签名（BLS12-381）  【bls_sig】
   BLS12-381 配对 e(P,Q)  【bls_pair】
   X448 密钥交换  【x448】
@@ -280,14 +293,19 @@
   Verkle Pedersen 哈希 hash64 / 树键派生  【verkle-hash64】
   Verkle 内积论证 IPA 证明（多项式求值）  【verkle-ipa-prove】
   Verkle 内积论证 IPA 验证  【verkle-ipa-verify】
-
+  ECDSA 公钥恢复（从签名还原公钥）  【ecdsa-recover】
 【分布式与门限密码】(4)
   Feldman VSS 可验证秘密共享  【vss】
   Pedersen DKG 分布式密钥生成  【dkg】
   Shamir 门限拆分（SSS）  【sss-split】
   Shamir 门限还原（SSS）  【sss-recover】
-
-【认证加密】(1)
+【认证加密】(4)
   Ascon-128a（AEAD）  【ascon128a】
+  AES-128-EAX（认证加密，可变 tag）  【eax-aes128】
+  AES-192-EAX（认证加密，可变 tag）  【eax-aes192】
+  AES-256-EAX（认证加密，可变 tag）  【eax-aes256】
+【密钥派生】(2)
+  MTProto 2.0 密钥派生（auth_key+msg_key→aes_key/aes_iv）  【mtproto-kdf】
+  MTProto 1.0 密钥派生（auth_key+msg_key→aes_key/aes_iv）  【mtproto1-kdf】
 
-TOTAL|268
+TOTAL|296

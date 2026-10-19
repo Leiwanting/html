@@ -269,4 +269,14 @@
       return G('bytesOut')(x942(oid, secret, new Uint8Array(0), hexB(k), len), fmt);
     }
   });
+
+  /* 暴露内核给「口令派生（KDF）」下拉框复用：
+     口令当 secret、Salt 框当 salt，label 固定为空（与界面默认一致）。 */
+  if (typeof window !== 'undefined') {
+    window.KDFX = window.KDFX || {};
+    window.KDFX.sp56a = function (secret, salt, outLen, hn) { return sp56a(secret, new Uint8Array(0), salt, outLen, hn || 'SHA-256', true); };
+    window.KDFX.sp56c = function (secret, salt, outLen, hn) { return sp56c(secret, salt, new Uint8Array(0), outLen, hn || 'SHA-256'); };
+    window.KDFX.tls12 = function (secret, salt, outLen, hn) { return pHash(hn || 'SHA-256', secret, salt, outLen); };
+    window.KDFX.x942 = function (secret, salt, outLen) { return x942(OID_DER.des3, secret, new Uint8Array(0), salt, outLen); };
+  }
 })();

@@ -730,19 +730,11 @@ function cast6Schedule(key) {
   }
   return { Kr: Kr, Km: Km };
 }
-function cast6ProcessBlock(pt, key, decrypt) {
-  var S = cast6Schedule(key), Kr = S.Kr.slice(), Km = S.Km.slice();
-  if (decrypt) {
-    /* 解密：12 组 quad-round 密钥前后对称交换（对应 Crypto++ 的 swap）。
-       ⚠ Crypto++ 的 K 是【扁平】的 96 项数组（8*i+k），而这里是
-       Kr[12][4] 二维结构，所以 i1/i2 必须落在 0..11 上。
-       我第一版照抄了 4*j+t，索引最大到 23，越界后 Uint32Array
-       静默返回 undefined（不报错），只在解密时才崩。 */
-    for (var j = 0; j < 6; j++) for (var t = 0; t < 4; t++) {
-      var a = Kr[j][t]; Kr[j][t] = Kr[11 - j][t]; Kr[11 - j][t] = a;
-      var b = Km[j][t]; Km[j][t] = Km[11 - j][t]; Km[11 - j][t] = b;
-    }
-  }
+/* 纯块运算：Kr / Km 由调用方【预先】排好（加密、解密各一套）。
+   ⚠ 历史 bug：密钥编排原本写在块函数内部，每个 16 字节块都要跑一遍
+     cast6Schedule —— 64KB 数据 = 4096 次完整编排，纯浪费。
+     现在编排只在 makeBlockFn 里做一次，块函数只做 12 组 quad-round。 */
+function cast6CryptBlock(pt, Kr, Km) {
   var A = ((pt[0] << 24) | (pt[1] << 16) | (pt[2] << 8) | pt[3]) >>> 0;
   var B = ((pt[4] << 24) | (pt[5] << 16) | (pt[6] << 8) | pt[7]) >>> 0;
   var C = ((pt[8] << 24) | (pt[9] << 16) | (pt[10] << 8) | pt[11]) >>> 0;
@@ -764,10 +756,44 @@ function cast6ProcessBlock(pt, key, decrypt) {
   for (i = 0; i < 4; i++) { out[i * 4] = (w[i] >>> 24) & 0xff; out[i * 4 + 1] = (w[i] >>> 16) & 0xff; out[i * 4 + 2] = (w[i] >>> 8) & 0xff; out[i * 4 + 3] = w[i] & 0xff; }
   return out;
 }
+/* 兼容旧签名（每次调用都重排密钥，慢）：保留给历史调用点。
+   解密的轮密钥交换规则见下：
+   ⚠ Crypto++ 的 K 是【扁平】的 96 项数组（8*i+k），而这里是
+     Kr[12][4] 二维结构，所以 j 必须落在 0..11 上。
+     我第一版照抄了 4*j+t，索引最大到 23，越界后 Uint32Array
+     静默返回 undefined（不报错），只在解密时才崩。 */
+function cast6ProcessBlock(pt, key, decrypt) {
+  var S = cast6Schedule(key), Kr = S.Kr.slice(), Km = S.Km.slice();
+  if (decrypt) {
+    for (var j = 0; j < 6; j++) for (var t = 0; t < 4; t++) {
+      var a = Kr[j][t]; Kr[j][t] = Kr[11 - j][t]; Kr[11 - j][t] = a;
+      var b = Km[j][t]; Km[j][t] = Km[11 - j][t]; Km[11 - j][t] = b;
+    }
+  }
+  return cast6CryptBlock(pt, Kr, Km);
+}
 function cast6MakeBlockFn(key) {
+  /* ⚠ 历史 bug（接口）：这里原本返回 {encrypt, decrypt}，而框架的统一接口
+     是 {enc, dec} —— symEncrypt / xtsEnc / cbc 等全部走 f.enc / f.dec。
+     结果 CAST-256 在 ECB/CBC/CFB/OFB/CTR 任何分组模式下一律抛
+     "blockFn is not a function"，功能 100% 不可用。
+     但条目能注册、脚本能加载、说明能显示，所以"脚本加载数"这类
+     健康检查抓不到 —— 只有真正点一次加密才暴露。 */
+  /* ⚠ 深拷贝：Kr / Km 是 [12][4] 二维结构，外层 .slice() 只是【浅拷贝】，
+     加解密两套会共享同一批子数组 —— 下面交换解密那套时会把加密那套一起改掉，
+     表现为"加密结果随是否被解密过而变化"（等价性 200/200 全不一致）。
+     原实现每次调用都重新 cast6Schedule，天然各自独立，所以这个坑此前没暴露。 */
+  var S = cast6Schedule(key);
+  function clone2(K) { var o = new Array(K.length); for (var i = 0; i < K.length; i++) o[i] = K[i].slice(); return o; }
+  var KeKr = clone2(S.Kr), KeKm = clone2(S.Km);
+  var KdKr = clone2(S.Kr), KdKm = clone2(S.Km);
+  for (var j = 0; j < 6; j++) for (var t = 0; t < 4; t++) {
+    var a = KdKr[j][t]; KdKr[j][t] = KdKr[11 - j][t]; KdKr[11 - j][t] = a;
+    var b = KdKm[j][t]; KdKm[j][t] = KdKm[11 - j][t]; KdKm[11 - j][t] = b;
+  }
   return {
-    encrypt: function (b) { return cast6ProcessBlock(b, key, false); },
-    decrypt: function (b) { return cast6ProcessBlock(b, key, true); }
+    enc: function (b) { return cast6CryptBlock(b, KeKr, KeKm); },
+    dec: function (b) { return cast6CryptBlock(b, KdKr, KdKm); }
   };
 }
 regSym({ id: 'cast6', name: 'CAST-256 / CAST6', group: '对称加密',

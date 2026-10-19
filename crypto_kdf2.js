@@ -158,4 +158,6 @@
       }
     });
   }
+
+  if (typeof window !== 'undefined') window.PBKDF1 = pbkdf1;
 })();

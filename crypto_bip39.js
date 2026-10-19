@@ -109,13 +109,24 @@
     param: false,
     info: 'BIP-39 助记词（比特币/以太坊钱包标准）。加密：输入熵 Hex（16/20/24/28/32 字节）→ 12~24 个助记词；解密：输入助记词 → 还原熵并校验校验和，篡改会报错。词表为 bitcoin/bips 官方 2048 词。',
     enc: async function (b) {
-      var s = String(b || '').trim();
-      var ent = s ? unhx(s) : (function () {
-        var r = new Uint8Array(16);
-        if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(r);
-        else for (var i = 0; i < 16; i++) r[i] = Math.floor(Math.random() * 256);
-        return r;
-      })();
+      /* 框架给 enc 的是已解码字节（勾选 Hex 输入时就是熵本身）；直接 String(b)
+         会得到 "0,0,0,..." 这类逗号数字串，必须先判类型再用。 */
+      var ent;
+      if (b instanceof Uint8Array || ArrayBuffer.isView(b)) {
+        ent = new Uint8Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+        if (!ent.length) ent = null;
+      } else {
+        var s = String(b || '').trim();
+        ent = s ? unhx(s) : null;
+      }
+      if (!ent) {
+        ent = (function () {
+          var r = new Uint8Array(16);
+          if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(r);
+          else for (var i = 0; i < 16; i++) r[i] = Math.floor(Math.random() * 256);
+          return r;
+        })();
+      }
       return await entropyToMnemonic(ent);
     },
     dec: async function (input) {
@@ -130,7 +141,17 @@
     param: true, paramLabel: '口令 passphrase（可留空）',
     info: 'BIP-39 助记词 → BIP-32 根种子：PBKDF2-HMAC-SHA512(助记词, "mnemonic"+口令, 2048 轮, 64 字节)。输入助记词，参数栏填口令（官方向量用 "TREZOR"），输出 64 字节种子 Hex。',
     enc: async function (b, k, p) {
-      var m = String(b || '').trim();
+      /* 助记词是文本：框架传字节时按 UTF-8 还原，不能 String(bytes) */
+      var m;
+      if (b instanceof Uint8Array || ArrayBuffer.isView(b)) {
+        var mb = new Uint8Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+        m = (typeof globalThis.bytesToStr === 'function')
+          ? globalThis.bytesToStr(mb)
+          : (typeof TextDecoder !== 'undefined' ? new TextDecoder().decode(mb) : String.fromCharCode.apply(null, mb));
+      } else {
+        m = String(b || '');
+      }
+      m = m.trim();
       if (!m) throw new Error('请输入助记词');
       try { await mnemonicToEntropy(m); } catch (e) { throw new Error('助记词无效：' + e.message); }
       return hx(await mnemonicToSeed(m, String(p || '').trim()));

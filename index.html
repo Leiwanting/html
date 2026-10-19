@@ -84,7 +84,11 @@
       
         <select id="keyMode" style="margin-top:6px">
           <option value="pw">口令（走 KDF 派生）</option>
-          <option value="raw">原始密钥（Hex，不经 KDF）</option>
+          <option value="raw">原始密钥 · Hex（不经 KDF）</option>
+          <option value="rawb64">原始密钥 · Base64（不经 KDF）</option>
+          <option value="rawtext">原始密钥 · 文本 UTF-8（不经 KDF）</option>
+          <option value="rawdec">原始密钥 · 十进制数组（不经 KDF）</option>
+          <option value="rand">随机生成（自动填回密钥框）</option>
         </select>
       </div>
 <div class="field hidden" id="paramField">
@@ -115,6 +119,7 @@
           <option value="CTS-CS3">CTS-CS3（Kerberos5）</option>
           <option value="CFB8">CFB8（8 位 CFB）</option>
           <option value="CFB1">CFB1（1 位 CFB）</option>
+          <option value="IGE">IGE（无限混淆扩展，OpenSSL）</option>
         </select>
       </div>
       <div class="field" id="padField">
@@ -143,6 +148,10 @@
           <option value="cryptojs">CryptoJS JSON</option>
           <option value="pgp">PGP ASCII Armor</option>
           <option value="jwe">JWE（紧凑序列化）</option>
+          <option value="ivct">IV‖密文（前缀拼接）</option>
+          <option value="openssl-nosalt">OpenSSL 无盐（-nosalt）</option>
+          <option value="json">JSON 全参数（ct/iv/salt）</option>
+          <option value="pem">PEM 装甲（BEGIN CIPHER）</option>
         </select>
       </div>
       <div class="field" id="saltField">
@@ -170,6 +179,12 @@
           <option value="argon2d">Argon2d（抗 GPU，最快）</option>
           <option value="scrypt">scrypt（抗 ASIC）</option>
           <option value="bcrypt">bcrypt（经典口令哈希）</option>
+          <option value="pbkdf1">PBKDF1（SHA-1，≤20 字节，仅兼容旧系统）</option>
+          <option value="bcryptpbkdf">bcrypt-pbkdf（OpenSSH 新版格式）</option>
+          <option value="sp56a">SP 800-56A 单步 KDF（HMAC 变体）</option>
+          <option value="sp56c">SP 800-56C 两步 KDF（HMAC 变体）</option>
+          <option value="tls12">TLS 1.2 PRF（P_hash）</option>
+          <option value="x942">ANSI X9.42 PRF（CMS 老式）</option>
           <option value="legacy">旧版单次 SHA-256（仅解历史数据）</option>
         </select>
       </div>
@@ -351,62 +366,21 @@
 <script src="crypto_kdf2.js"></script>
 <script src="crypto_nistkdf.js"></script>
 <script src="crypto_kdf_nist3.js"></script>
+<script src="crypto_kdf5.js"></script>
+<script src="crypto_lion_chacha.js"></script>
+<script src="crypto_mtproto.js"></script>
 <script src="crypto_srp6.js"></script>
 <script src="crypto_checksum2.js"></script>
+<script src="crypto_pc_eax.js"></script>
+<script src="crypto_misc6.js"></script>
+<script src="crypto_xmss.js"></script>
 
 <div class="panel">
 <details>
-<summary style="cursor:pointer;font-size:13px;color:var(--muted)">新增算法使用说明（ECC / SM2 / DSA / ElGamal / Twofish / Camellia）</summary>
+<summary style="cursor:pointer;font-size:13px;color:var(--muted)">输出格式与模式说明（23 种编码 / XTS / IGE / Argon2）</summary>
 <div class="status" style="margin-top:10px;line-height:1.9">
-<b>1. 先生成密钥</b>：算法选「密钥工具 → 密钥生成」，参数栏填 <code>ecc</code>（默认 P-256）、<code>ecc:p384</code>、<code>ecc:p521</code>、<code>ecc:secp256k1</code>、<code>sm2</code>、<code>dsa</code>、<code>elgamal</code>、<code>dh</code>，点【加密】即输出一对新密钥。<br>
-<b>2. ECC 通用加密（ECIES）</b>：加密＝参数栏填对方公钥；解密＝密钥栏填自己的私钥。<br>
-<b>3. ECC 密钥协商（ECDH）</b>：双方各填自己的私钥 + 对方的公钥，算出同一个共享密钥。<br>
-<b>4. ECDSA / DSA / SM2 签名</b>：【加密】＝用私钥签名；【解密】＝密钥栏填公钥、参数栏填签名、输入框填原消息。<br>
-<b>5. SM2 加密</b>：加密＝参数栏填对方公钥；解密＝密钥栏填自己的私钥。<br>
-<b>6. ElGamal 加密</b>：加密＝参数栏填对方公钥 y；解密＝密钥栏填自己的私钥 x。<br>
-<div style="margin-bottom:10px;padding:10px;background:rgba(255,255,255,.04);border-radius:6px;line-height:1.8">
-<b>关于 IV（初始化向量）</b>：留空时会自动随机生成，并<b>回写到上方 IV 输入框</b>，而<b>不会</b>拼进密文里。
-因此密文更短，但解密时必须把对应的 IV 一起填回（IV 不是秘密，可以和密文一起传输/保存，但同一密钥下禁止重复使用同一个 IV）。
-手动填写 IV 时，加密结果完全可复现。旧版本产生的「IV 头 + 密文」格式仍能正常解密。
-</div>
-<b>7. Twofish / Camellia</b>：与 AES 用法完全一致，支持 ECB/CBC/CFB/OFB/CTR；两者均提供 128 / 192 / 256 三种密钥长度。<br>
-<span style="color:var(--muted)">曲线可用前缀写在密钥或参数栏开头，如 <code>p384:04ab…</code>；不写则默认 P-256。SM2 默认用户标识 ID = 1234567812345678。</span>
-</div>
-</details>
-</div>
-<div class="panel">
-<details>
-<summary style="cursor:pointer;font-size:13px;color:var(--muted)">第三批算法说明（AEAD / 哈希 / KDF / TEA 族 / 古典密码）</summary>
-<div class="status" style="margin-top:10px;line-height:1.9">
-<b>AES-GCM / ChaCha20-Poly1305</b>：认证加密（AEAD）。密钥栏填密钥，参数栏填附加数据 AAD（可选）。输出自带 nonce 与认证标签，解密时若密文被篡改会直接报错。<br>
-<b>BLAKE2b / RIPEMD-160</b>：单向哈希。BLAKE2b 可在参数栏指定输出字节数（1~64，默认 64）。<br>
-<b>HMAC</b>：输入栏填消息，密钥栏填密钥，参数栏填哈希算法（SHA-256/SHA-512/SHA-1）。<br>
-<b>PBKDF2</b>：输入栏填口令，密钥栏填盐值，参数栏填迭代次数（默认 100000）。<br>
-<b>HKDF</b>：输入栏填原始密钥材料 IKM，密钥栏填 info（可选），参数栏填输出字节数。<br>
-<b>scrypt</b>：输入栏填口令，密钥栏填盐值，参数栏填 N,r,p（默认 16384,8,1，N 须为 2 的幂，上限 32768）。<br>
-<b>TEA / XTEA / GOST Magma</b>：与 AES 用法一致。XXTEA 为变长块，直接对整个消息加解密。<br>
-<b>古典密码</b>：维吉尼亚（参数＝密钥词）、仿射（参数＝a,b）、栅栏（参数＝栏数）、Playfair（参数＝密钥词）、Atbash、培根密码，均为教学用途。
-</div>
-</details>
-</div>
-<div class="panel">
-<details>
-<summary style="cursor:pointer;font-size:13px;color:var(--muted)">第四批算法说明（Streebog / Kuznyechik / Serpent / AES-CCM / SHAKE / KMAC / CMAC）</summary>
-<div class="status" style="margin-top:10px;line-height:1.9">
-<b>Streebog-256/512</b>：俄罗斯国家标准哈希 GOST R 34.11-2012。<br>
-<b>Kuznyechik / Serpent</b>：与 AES 用法一致（128 位块）。Kuznyechik 是俄罗斯 GOST R 34.12-2015 的 128 位分组密码；Serpent 是 AES 决赛算法，安全裕度高于 AES。<br>
-<b>AES-CCM</b>：认证加密（CBC-MAC + CTR），常用于 WPA2 / 蓝牙。密钥栏填密钥，参数栏填 AAD（可选）。<b>明文不能为空</b>。<br>
-<b>SHAKE128/256</b>：可扩展输出函数，参数栏填输出字节数（默认 32）。<br>
-<b>KMAC128/256</b>：NIST SP 800-185 的 Keccak MAC。输入栏填消息，密钥栏填密钥（<b>至少 16 字节</b>），参数栏填输出字节数。<br>
-<b>CMAC-AES</b>：基于 AES 的消息认证码。输入栏填消息，密钥栏填密钥。
-</div>
-</details>
-</div>
-<div class="panel">
-<details>
-<summary style="cursor:pointer;font-size:13px;color:var(--muted)">输出格式与新增模式说明（14 种编码 / XTS / Argon2）</summary>
-<div class="status" style="margin-top:10px;line-height:1.9">
-<b>输出格式（14 种，任选）</b>：Base64、Base64URL、Hex 小写/大写/空格分隔/冒号分隔、C 数组、十进制数组、二进制串、转义串、Base32、Base58、Ascii85、PEM 风格。<b>加密与解密要选同一种格式</b>，否则解析会出错。<br><br>
+<b>输出格式（23 种，任选）</b>：Base64、Base64URL、Base64（MIME 76 换行）、Hex 小写/大写/空格分隔/冒号分隔、C 数组、十进制数组、JSON 数组、二进制串、转义串、Base32、Base45、Base58、Ascii85、Z85、UUEncode、Hex dump、Python bytes、Go []byte、Rust 数组、PEM。<b>加密与解密要选同一种格式</b>，否则解析会出错；其中 UUEncode / Hex dump / 三种语言字面量只能编码、不能反向解码，别用于要解密的密文。<br><br>
+<b>IGE 模式</b>：Infinite Garble Extension（OpenSSL 的 <code>-ige</code>），<code>C_i = Enc(P_i ⊕ C_{i-1}) ⊕ P_{i-1}</code>，一个字节出错会污染后面全部块。<b>IV 框要填 32 字节</b>（AES 块长 16 的两倍）：前 16 字节是明文反馈初值，后 16 字节是密文反馈初值；留空会随机生成并回写。实现按定义编写并与独立 Python 实现交叉验证一致（<span style="color:#c8a86b">OpenSSL 3 的 enc 命令已不提供 ige，未能与官方直接对拍</span>）。<br><br>
 <b>XTS 模式（磁盘加密）</b>：IEEE 1619 标准，用于磁盘/扇区加密。选 XTS 后，<b>IV 框里填的就是 tweak</b>（16 字节），留空会随机生成并回写。特点：<b>不填充</b>，密文长度 = 明文长度；<b>明文至少 16 字节</b>；只支持 128 位块算法（AES/Serpent/Kuznyechik/Camellia/Twofish/SM4 等），DES/Blowfish/IDEA 会明确拒绝。<br><br>
 <b>Argon2（内存硬 KDF）</b>：RFC 9106，抗 ASIC/GPU 暴力破解，强于 PBKDF2 和 scrypt。用法：<b>输入栏填盐（至少 8 字节）</b>，密钥栏填口令，参数栏填 <code>轮数,内存KB,输出字节数</code>（如 <code>2,1024,32</code>）。三种变体：Argon2id（推荐）、Argon2i（抗侧信道）、Argon2d（抗 GPU 最强）。<br>
 <span style="color:#c8a86b">性能提示：本实现用 BigInt 做 64 位运算，1MB/2 轮约 0.24 秒；内存开得越大越慢，建议先用 1024 以内试。</span>
@@ -426,6 +400,10 @@
 · <b>CFB8 / CFB1</b>：SP 800-38A 的 CFB 变体，按字节 / 按比特处理，无需填充。CFB1 极慢，仅小数据。<br>
 · XTS / LRW 只支持 128 位块算法；DES、Blowfish、IDEA 会明确拒绝。<br><br>
 <b>封装格式</b>：<br>
+· <b>IV‖密文</b>：把 IV 直接拼在密文前面，解密时自动切分，不用另外保存 IV（ECB 无 IV，不适用）。<br>
+· <b>OpenSSL 无盐</b>：等价于 <code>openssl enc -nosalt</code>，密钥走 EVP_BytesToKey(SHA-256) 但不带 <code>Salted__</code> 头，密文更短、可复现。<br>
+· <b>JSON 全参数</b>：<code>{v,alg,mode,pad,iv,salt,ct}</code>，算法/模式/填充/IV/盐全在里面，解密时自动读取，最省事。<br>
+· <b>PEM 装甲</b>：<code>-----BEGIN CIPHER-----</code> 包一层 Base64，纯文本封装，不携带 IV。<br>
 · <b>OpenSSL 兼容</b>：输出 <code>Salted__</code> + salt + 密文，密钥走 EVP_BytesToKey(SHA-256)，可与 <code>openssl enc -md sha256</code> 互通。<br>
 · <b>CryptoJS JSON</b>：<code>{ct, iv, s}</code>，密钥走 EVP_BytesToKey(MD5)，与 CryptoJS 默认一致。<br>
 · <b>PGP ASCII Armor</b>：带 CRC24 校验，篡改会被抓到。<br>
@@ -437,6 +415,10 @@
 · <b>阻止</b>（默认）：发现复用立即中止；<b>仅警告</b>：照常加密但红字提示；<b>关闭</b>：不检测。<br>
 · 另一个相关改动：IV 框里<b>自动填入</b>的值只供你保存，再次加密会自动换新的（不会误用上一次的 nonce）；只有<b>你手动填写或修改过</b>的 IV 才会被实际采用。<br>
 · SIV 是确定性 AEAD，本身抗 nonce 误用，不参与检测。<br><br>
+<b>密钥栏的 6 种输入方式</b>：<br>
+· <b>口令</b>（默认）：走下面选的 KDF 派生，Salt 框可固定盐以便复现。<br>
+· <b>原始密钥 Hex / Base64 / 文本 UTF-8 / 十进制数组</b>：不经 KDF，长度必须正好等于算法要求（AES-256 就是 32 字节），否则明确报错而不是静默截断。<br>
+· <b>随机生成</b>：密钥框留空即可，加密时生成符合长度的随机密钥，并把实际用到的密钥<b>回写到密钥框</b>（同时切到 Hex 模式），方便保存复用。<br><br>
 <b>密钥对导出</b>：算法选「密钥工具 → 密钥对导出（JWK / PEM）」，参数栏填 <code>p256</code> / <code>p384</code> / <code>p521</code> / <code>rsa2048</code>，点【加密】即输出 JWK 与 PEM 两种格式。<span style="color:#c0392b">私钥 PEM 高度敏感，切勿外传。</span>
 </div>
 </details>

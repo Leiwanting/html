@@ -1018,9 +1018,12 @@ var KDF_COST = 10;              /* bcrypt cost / Argon2 轮数 / scrypt N 的指
 var KDF_ITERATIONS = 210000;    /* OWASP 2023 对 PBKDF2-HMAC-SHA256 的建议下限 */
 var KDF_SALT_LEN = 16;
 
-function setKeyMode(m) { if (m === 'pw' || m === 'raw') KEY_MODE = m; }
+function setKeyMode(m) {
+  var ok = ['pw', 'raw', 'rawb64', 'rawtext', 'rawdec', 'rand'];
+  if (ok.indexOf(m) >= 0) KEY_MODE = m;
+}
 function setKdfMode(m) {
-  var ok = ['kdf2', 'argon2id', 'argon2i', 'argon2d', 'scrypt', 'bcrypt', 'legacy'];
+  var ok = ['kdf2', 'argon2id', 'argon2i', 'argon2d', 'scrypt', 'bcrypt', 'legacy', 'pbkdf1', 'bcryptpbkdf', 'sp56a', 'sp56c', 'tls12', 'x942'];
   if (ok.indexOf(m) >= 0) KDF_MODE = m;
 }
 function setKdfHash(h) {
@@ -1140,13 +1143,30 @@ async function pbkdf2WithHash(pw, salt, iterations, dkLen, hashName) {
    注意：salt 必须能复现，否则同一口令两次派生会得到不同的密钥，
    密文就再也解不开了。 */
 async function deriveKeyFromPassword(password, keyLen, saltBytes) {
-  if (KEY_MODE === 'raw') {
-    var hex = String(password || '').trim().replace(/^0x/i, '').replace(/\s+/g, '');
-    if (hex.length !== keyLen * 2) {
-      throw new Error('原始密钥模式下，密钥必须是 ' + keyLen + ' 字节（' + (keyLen * 2) + ' 位 Hex），当前 ' + Math.floor(hex.length / 2) + ' 字节。若要使用口令请切回「口令」模式。');
+  if (KEY_MODE === 'raw' || KEY_MODE === 'rawb64' || KEY_MODE === 'rawtext' || KEY_MODE === 'rawdec') {
+    var kb = null, tag = '';
+    if (KEY_MODE === 'raw') {
+      var hex = String(password || '').trim().replace(/^0x/i, '').replace(/\s+/g, '');
+      if (!/^[0-9a-fA-F]*$/.test(hex)) throw new Error('原始密钥（Hex）只能含 0-9 a-f');
+      kb = hexToBytes(hex); tag = 'raw-hex（原始密钥，未经 KDF）';
+    } else if (KEY_MODE === 'rawb64') {
+      kb = base64ToBytes(String(password || '').trim()); tag = 'raw-base64（原始密钥，未经 KDF）';
+    } else if (KEY_MODE === 'rawtext') {
+      kb = strToBytes(String(password || '')); tag = 'raw-text（UTF-8 原始密钥，未经 KDF）';
+    } else {
+      var nums = String(password || '').replace(/[^0-9,]/g, '').split(',').filter(function (x) { return x !== ''; }).map(Number);
+      if (nums.some(function (n) { return isNaN(n) || n < 0 || n > 255; })) throw new Error('十进制数组只能是 0~255 的整数，以逗号分隔');
+      kb = new Uint8Array(nums); tag = 'raw-dec（十进制数组原始密钥，未经 KDF）';
     }
-    if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error('原始密钥必须是 Hex 字符串（仅含 0-9 a-f）');
-    return { key: hexToBytes(hex), kdfTag: 'raw-hex（原始密钥，未经 KDF）', salt: null };
+    if (kb.length !== keyLen) {
+      throw new Error('原始密钥模式下，密钥必须是 ' + keyLen + ' 字节，当前 ' + kb.length + ' 字节。若要使用口令请切回「口令」模式。');
+    }
+    return { key: kb, kdfTag: tag, salt: null };
+  }
+  if (KEY_MODE === 'rand') {
+    var rnd = crypto.getRandomValues(new Uint8Array(keyLen));
+    window._lastRandKeyHex = bytesToHex(rnd);
+    return { key: rnd, kdfTag: 'random（本次随机生成，已回写到密钥框）', salt: null };
   }
   if (KDF_MODE === 'legacy') {
     var d = sha256BytesSync(strToBytes(password || ''));
@@ -1162,6 +1182,28 @@ async function deriveKeyFromPassword(password, keyLen, saltBytes) {
   else if (typeof window !== 'undefined' && window._lastKdfSalt) salt = window._lastKdfSalt;
   else salt = crypto.getRandomValues(new Uint8Array(KDF_SALT_LEN));
 
+  if (KDF_MODE === 'pbkdf1') {
+    if (typeof window === 'undefined' || typeof window.PBKDF1 !== 'function') throw new Error('PBKDF1 不可用');
+    if (keyLen > 20) throw new Error('PBKDF1 最多派生 20 字节（' + keyLen + ' 字节算法请改用 PBKDF2）');
+    var it1 = Math.max(1, Math.min(1000000, KDF_COST || 1000));
+    return { key: window.PBKDF1(strToBytes(password || ''), salt, it1, keyLen), kdfTag: 'pbkdf1:' + it1, salt: salt };
+  }
+  if (KDF_MODE === 'bcryptpbkdf') {
+    if (typeof window === 'undefined' || typeof window.BCRYPT_PBKDF !== 'function') throw new Error('bcrypt-pbkdf 不可用');
+    var rounds = Math.max(1, Math.min(64, KDF_COST || 16));
+    return { key: window.BCRYPT_PBKDF(strToBytes(password || ''), salt, rounds, keyLen), kdfTag: 'bcrypt-pbkdf:r=' + rounds, salt: salt };
+  }
+  if (KDF_MODE === 'sp56a' || KDF_MODE === 'sp56c' || KDF_MODE === 'tls12' || KDF_MODE === 'x942') {
+    var KX = (typeof window !== 'undefined') ? window.KDFX : null;
+    if (!KX) throw new Error('KDF 内核未加载');
+    var sec = strToBytes(password || '');
+    var kk2;
+    if (KDF_MODE === 'sp56a') kk2 = KX.sp56a(sec, salt, keyLen, KDF_HASH);
+    else if (KDF_MODE === 'sp56c') kk2 = KX.sp56c(sec, salt, keyLen, KDF_HASH);
+    else if (KDF_MODE === 'tls12') kk2 = KX.tls12(sec, salt, keyLen, KDF_HASH === 'SHA-384' ? 'SHA-384' : 'SHA-256');
+    else kk2 = KX.x942(sec, salt, keyLen);
+    return { key: kk2, kdfTag: KDF_MODE + '（口令当共享秘密、Salt 框当 salt）', salt: salt };
+  }
   if (KDF_MODE === 'bcrypt') {
     var bs = new Uint8Array(16);
     bs.set(salt.subarray(0, Math.min(salt.length, 16)), 0);
@@ -1540,11 +1582,16 @@ function ocbCtx(keyBytes) {
   for (var i = 1; i <= 48; i++) L.push(ocbDbl(L[i - 1]));
   return { f: f, Ls: Ls, Ld: Ld, L: L };
 }
-/* Offset_0：nonce 补零到 16 字节后取 Ktop，再按 bottom 位偏移取 128 位 */
-function ocbOffset0(keyBytes, nonce) {
+/* Offset_0：nonce 补零到 16 字节后取 Ktop，再按 bottom 位偏移取 128 位。
+   tagBytes 参与 nonce_buf[0] 的计算 —— 照 Botan ocb.cpp update_nonce()：
+     nonce_buf[0] = ((tag_size*8) % (BS*8)) << (BS<=16 ? 1 : 0)
+   BS=16 且 tag=16 字节时该值为 0，所以旧版不传也能过标准向量；
+   但 tag=12 字节时是 0xC0，不处理则 OCB(12) 全错。默认 16 保持旧行为。 */
+function ocbOffset0(keyBytes, nonce, tagBytes) {
   var f = aesMakeBlockFn(keyBytes);
   var nb = new Uint8Array(16);
   nb.set(nonce.subarray(0, Math.min(nonce.length, 16)), 16 - Math.min(nonce.length, 16));
+  nb[0] = (((tagBytes || 16) * 8) % 128) << 1;
   nb[16 - Math.min(nonce.length, 16) - 1] = 0x01;
   var bottom = nb[15] & 0x3f;
   var ktopIn = new Uint8Array(nb);
@@ -1556,26 +1603,33 @@ function ocbOffset0(keyBytes, nonce) {
   return ocbBitsOut(st, bottom);
 }
 /* PMAC（OCB-HASH）：AAD 认证。
-   规则：完整块用 E(A_i ^ Offset_i)；末块再额外 ^ L_*；
-   末块若不完整，偏移用 Offset_* = Offset_{m-1} ^ L_*（与数据侧一致）。 */
+   逐行照 Botan 2.19.5 src/lib/modes/aead/ocb/ocb.cpp 的 ocb_hash() 实现：
+     · 完整块：Offset_i = Offset_{i-1} ^ L[ntz(i)]，sum ^= E(A_i ^ Offset_i)
+       —— 注意【不额外 ^ L_*】。旧版给"最后一块且完整"的情况多 XOR 了 L_*，
+          导致 AAD 长度恰为 16 倍数时 tag 全错（密文仍对，自洽测试测不出来）。
+     · 不完整尾块：Offset_  = offset ^ L_*（offset 是完整块循环结束后的值，
+       【不再对尾块应用 L[ntz(m)]】——这与数据侧 OCB-ENCRYPT 的规则不同，
+       是最容易写错的地方）；buf = offset ^ 尾字节，buf[rem] ^= 0x80，再加密。
+     · 旧版用的是 Offset_{m-1} ^ L_*（少了 L[ntz(m)]），同样是错的。 */
 function ocbPmac(keyBytes, aad) {
   var c = ocbCtx(keyBytes);
   var sum = new Uint8Array(16);
   if (!aad || aad.length === 0) return sum;
-  var m = Math.ceil(aad.length / 16);
+  var nBlocks = Math.floor(aad.length / 16);
+  var rem = aad.length % 16;
   var offset = new Uint8Array(16);
-  for (var i = 1; i <= m; i++) {
-    var prev = offset;
-    offset = ocbXor(offset, c.L[ocbNtz(i)]);
-    var st = (i - 1) * 16;
-    var seg = aad.subarray(st, Math.min(st + 16, aad.length));
-    if (i < m) {
-      sum = ocbXor(sum, c.f.enc(ocbXor(seg, offset)));
-    } else if (seg.length === 16) {
-      sum = ocbXor(sum, c.f.enc(ocbXor(ocbXor(seg, offset), c.Ls)));
-    } else {
-      sum = ocbXor(sum, c.f.enc(ocbXor(ocbPadBlock(seg), ocbXor(prev, c.Ls))));
-    }
+  var i, j;
+  for (i = 0; i < nBlocks; i++) {
+    offset = ocbXor(offset, c.L[ocbNtz(i + 1)]);
+    sum = ocbXor(sum, c.f.enc(ocbXor(aad.subarray(i * 16, i * 16 + 16), offset)));
+  }
+  if (rem) {
+    offset = ocbXor(offset, c.Ls);
+    var buf = new Uint8Array(16);
+    buf.set(offset, 0);
+    for (j = 0; j < rem; j++) buf[j] ^= aad[nBlocks * 16 + j];
+    buf[rem] ^= 0x80;
+    sum = ocbXor(sum, c.f.enc(buf));
   }
   return sum;
 }
@@ -1585,10 +1639,11 @@ function ocbPadBlock(seg) {
   if (seg.length < 16) b[seg.length] = 0x80;
   return b;
 }
-function aesOcbEncrypt(plain, keyBytes, nonce, aad) {
+function aesOcbEncrypt(plain, keyBytes, nonce, aad, tagBytes) {
   if (nonce.length > 15) throw new Error('OCB 的 nonce 最多 15 字节（120 位）');
+  tagBytes = tagBytes || 16;
   var c = ocbCtx(keyBytes);
-  var offset = ocbOffset0(keyBytes, nonce);
+  var offset = ocbOffset0(keyBytes, nonce, tagBytes);
   var m = Math.ceil(plain.length / 16);
   var ct = new Uint8Array(m * 16);
   var checksum = new Uint8Array(16);
@@ -1611,12 +1666,13 @@ function aesOcbEncrypt(plain, keyBytes, nonce, aad) {
     }
   }
   var tag = ocbXor(c.f.enc(ocbXor(ocbXor(checksum, offset), c.Ld)), ocbPmac(keyBytes, aad));
-  return { ciphertext: ct.subarray(0, plain.length), tag: tag };
+  return { ciphertext: ct.subarray(0, plain.length), tag: tag.subarray(0, tagBytes) };
 }
-function aesOcbDecrypt(cipher, tag, keyBytes, nonce, aad) {
+function aesOcbDecrypt(cipher, tag, keyBytes, nonce, aad, tagBytes) {
   if (nonce.length > 15) throw new Error('OCB 的 nonce 最多 15 字节（120 位）');
+  tagBytes = tagBytes || 16;
   var c = ocbCtx(keyBytes);
-  var offset = ocbOffset0(keyBytes, nonce);
+  var offset = ocbOffset0(keyBytes, nonce, tagBytes);
   var m = Math.ceil(cipher.length / 16);
   var pt = new Uint8Array(m * 16);
   var checksum = new Uint8Array(16);
@@ -1640,7 +1696,7 @@ function aesOcbDecrypt(cipher, tag, keyBytes, nonce, aad) {
     }
   }
   var exp = ocbXor(c.f.enc(ocbXor(ocbXor(checksum, offset), c.Ld)), ocbPmac(keyBytes, aad));
-  if (bytesToHex(exp) !== bytesToHex(tag)) throw new Error('OCB 标签校验失败：密文或 AAD 已被篡改');
+  if (bytesToHex(exp.subarray(0, tagBytes)) !== bytesToHex(tag.subarray(0, tagBytes))) throw new Error('OCB 标签校验失败：密文或 AAD 已被篡改');
   return pt.subarray(0, cipher.length);
 }
 

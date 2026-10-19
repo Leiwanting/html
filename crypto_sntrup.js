@@ -796,6 +796,16 @@
     var DE_INFO = '用私钥解封装：密钥栏填 sk，输入填密文，输出 32 字节共享密钥。' +
       '密文被篡改时返回伪随机密钥（隐含拒绝），属正常行为。';
 
+  /* rndBytes 是 crypto_core.js IIFE 内的局部函数，跨文件取不到
+     （crypto_frodo.js 里已因同一原因本地定义过一次）。
+     sntrup761 的 keygen / encaps 都要用它，缺了在浏览器会直接 ReferenceError。 */
+  function rndBytes(n) {
+    var b = new Uint8Array(n);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(b);
+    else { for (var i = 0; i < n; i++) b[i] = (Math.random() * 256) | 0; }
+    return b;
+  }
+
     reg({
       id: 'sntrup761-keygen', name: 'sntrup761 密钥生成',
       group: '后量子密码', key: false, param: true,

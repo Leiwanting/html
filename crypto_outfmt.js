@@ -99,3 +99,34 @@ if (typeof OUT_FORMATS === 'object') {
   OUT_FORMATS.goliteral = { label: 'Go []byte 字面量', out: outGoLiteral, inFn: null };
   OUT_FORMATS.rustliteral = { label: 'Rust 数组字面量', out: outRustLiteral, inFn: null };
 }
+
+/* ---- 新增两种可逆输出格式 ---- */
+function outJsonArr(b) { return '[' + Array.from(b).join(', ') + ']'; }
+function inJsonArr(s) {
+  var a = JSON.parse(String(s || '').trim());
+  if (!Array.isArray(a)) throw new Error('JSON 数组格式应为 [1, 2, 3]');
+  a.forEach(function (x) { if (!(x >= 0 && x <= 255)) throw new Error('数组元素需在 0~255'); });
+  return new Uint8Array(a);
+}
+function outMime64(b) { return bytesToBase64(b).replace(/(.{76})/g, '$1\n'); }
+function inMime64(s) { return base64ToBytes(String(s || '').replace(/\s+/g, '')); }
+if (typeof OUT_FORMATS === 'object') {
+  OUT_FORMATS.jsonarr = { label: 'JSON 数组 [1, 2, ..]', out: outJsonArr, inFn: inJsonArr };
+  OUT_FORMATS.mime64 = { label: 'Base64（MIME 76 换行）', out: outMime64, inFn: inMime64 };
+}
+/* 重填「密文格式」下拉框：
+   crypto_core.js 末尾的 initFmtSelect 在本文件之前执行，只装了 14 种基础格式；
+   本文件合并进来的 9 种必须再填一次才会出现在界面上（此前一直选不到）。 */
+(function refillFmtSelect() {
+  if (typeof document === 'undefined' || !document.getElementById) return;
+  var sel = document.getElementById('fmt');
+  if (!sel || typeof OUT_FORMATS !== 'object') return;
+  var cur = sel.value;
+  sel.innerHTML = '';
+  Object.keys(OUT_FORMATS).forEach(function (k) {
+    var o = document.createElement('option');
+    o.value = k; o.textContent = OUT_FORMATS[k].label;
+    sel.appendChild(o);
+  });
+  sel.value = OUT_FORMATS[cur] ? cur : 'base64';
+})();

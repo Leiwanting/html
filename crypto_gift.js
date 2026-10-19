@@ -144,19 +144,32 @@
     for (i = 0; i < nn; i++) s[i] = GIFT_S_INV[s[i]];
   }
 
+  /* 轮密钥序列只依赖【密钥】，与明文无关 —— 可以在 makeBlockFn 里算一次复用。
+     ⚠ 历史 bug：原本放在 giftCore 内部，每个块都要重算 28（或 40）轮密钥状态，
+       且每轮 key.slice(0) 都新分配一个 32 字节数组 —— 64KB 数据就是
+       8192 块 × 28 = 约 23 万次数组分配，纯 GC 负担。 */
+  function giftKeySeq(kb, rounds) {
+    var key = bytesToNibbles(kb, 32), temp = new Uint8Array(32), rkSeq = [];
+    for (var r = 0; r < rounds; r++) { rkSeq.push(key.slice(0)); giftKeyUpdate(key, temp); }
+    return rkSeq;
+  }
+
   /* 加密时预先把每轮的轮常数取出（解密要倒序用），这里直接顺序跑即可 */
-  function giftCore(pt, kb, rounds, enc) {
+  function giftCore(pt, kb, rounds, enc, rkSeqIn) {
     var nn = pt.length * 2;                 /* nibble 数 */
     var s = bytesToNibbles(pt, nn);
-    var key = bytesToNibbles(kb, 32);
     var bits = new Uint8Array(nn * 4), permBits = new Uint8Array(nn * 4), keyBits = new Uint8Array(128);
-    var temp = new Uint8Array(32);
     var P = (nn === 32) ? GIFT_P128 : GIFT_P64;
 
     var r, i;
-    var rkSeq = [];
-    /* 解密需要先推进到第 rounds-1 轮的密钥状态，故先记录所有轮密钥状态 */
-    for (r = 0; r < rounds; r++) { rkSeq.push(key.slice(0)); giftKeyUpdate(key, temp); }
+    /* 解密需要先推进到第 rounds-1 轮的密钥状态，故先记录所有轮密钥状态。
+       若调用方已预计算（rkSeqIn），直接复用，不再重算。 */
+    var rkSeq = rkSeqIn;
+    if (!rkSeq) {
+      var key = bytesToNibbles(kb, 32), temp = new Uint8Array(32);
+      rkSeq = [];
+      for (r = 0; r < rounds; r++) { rkSeq.push(key.slice(0)); giftKeyUpdate(key, temp); }
+    }
 
     if (enc) {
       for (r = 0; r < rounds; r++) giftRound(s, rkSeq[r], bits, permBits, keyBits, P, GIFT_RC[r], true);
@@ -166,13 +179,13 @@
     return nibblesToBytes(s);
   }
 
-  function gift64Enc(pt, kb) { return giftCore(pt, kb, 28, true); }
-  function gift64Dec(ct, kb) { return giftCore(ct, kb, 28, false); }
-  function gift128Enc(pt, kb) { return giftCore(pt, kb, 40, true); }
-  function gift128Dec(ct, kb) { return giftCore(ct, kb, 40, false); }
+  function gift64Enc(pt, kb, rk) { return giftCore(pt, kb, 28, true, rk); }
+  function gift64Dec(ct, kb, rk) { return giftCore(ct, kb, 28, false, rk); }
+  function gift128Enc(pt, kb, rk) { return giftCore(pt, kb, 40, true, rk); }
+  function gift128Dec(ct, kb, rk) { return giftCore(ct, kb, 40, false, rk); }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { gift64Enc: gift64Enc, gift64Dec: gift64Dec, gift128Enc: gift128Enc, gift128Dec: gift128Dec };
+    module.exports = { gift64Enc: gift64Enc, gift64Dec: gift64Dec, gift128Enc: gift128Enc, gift128Dec: gift128Dec, giftKeySeq: giftKeySeq };
   }
-  global.GIFT = { gift64Enc: gift64Enc, gift64Dec: gift64Dec, gift128Enc: gift128Enc, gift128Dec: gift128Dec };
+  global.GIFT = { gift64Enc: gift64Enc, gift64Dec: gift64Dec, gift128Enc: gift128Enc, gift128Dec: gift128Dec, giftKeySeq: giftKeySeq };
 })(typeof window !== 'undefined' ? window : globalThis);

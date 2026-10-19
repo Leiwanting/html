@@ -67,6 +67,18 @@
     for (var j = 0; j < out.length; j++) res[z + j] = out[j];
     return res;
   }
+  /* basE91 标准字母表（Joachim Henke 官方，共 91 个字符）。
+     ⚠ 历史 bug：B91E / B91D 曾被【引用但从未定义】，导致 basE91 的编码与解码
+     100% 抛 "B91E is not defined" —— 功能完全不可用，但脚本能正常加载，
+     所以"脚本加载数"这类健康检查抓不到，只有实际调用才暴露。
+     字母表与解码表由 base91 参考实现导出（非手抄），已与官方向量对拍。 */
+  var B91E = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~"';
+  var B91D = (function () {
+    var d = new Int16Array(256);
+    for (var i = 0; i < 256; i++) d[i] = -1;
+    for (var i = 0; i < B91E.length; i++) d[B91E.charCodeAt(i)] = i;
+    return d;
+  })();
   function b91enc(bytes) {
     var out = '', b = 0, n = 0;
     for (var i = 0; i < bytes.length; i++) {

@@ -2,7 +2,7 @@
 
 一个**纯前端、离线可用**的密码学工具箱，单页 HTML 应用，无需后端、无需联网、不上传任何数据。
 
-当前内置 **268 个算法条目**，覆盖编码、哈希、对称加密、非对称、后量子、椭圆曲线与高级代数、门限密码、认证加密、校验和等门类。
+当前内置 **296 个算法条目**，覆盖编码、哈希、对称加密、非对称、后量子、椭圆曲线与高级代数、门限密码、认证加密、校验和等门类。
 
 - **许可**：MIT License（见 `LICENSE`）
 - **第三方来源**：见 `THIRD_PARTY_NOTICES.md`
@@ -30,7 +30,7 @@ python3 -m http.server 8000   # 然后访问 http://localhost:8000
 
 - **纯前端**：所有运算在浏览器内完成，密钥与明文**不会离开本机**
 - **离线可用**：不依赖 CDN、不请求网络
-- **268 个算法**：从古典密码到后量子（ML-KEM / ML-DSA / SPHINCS+ / HQC / sntrup761 / McEliece 全 5 参数集 / FrodoKEM）
+- **296 个算法**：从古典密码到后量子（ML-KEM / ML-DSA / SPHINCS+ / HQC / sntrup761 / McEliece 全 5 参数集 / FrodoKEM）
 - **国密完整**：SM2（签名/加密/密钥协商）、SM3、SM4、SM9（标识密码）、ZUC-128
 - **官方向量验证**：核心算法均对照 RFC / NIST / BIP / 3GPP / 官方参考实现验证
 - **内置自检**：界面内置自检按钮，可一键检查各算法可用性
@@ -41,12 +41,12 @@ python3 -m http.server 8000   # 然后访问 http://localhost:8000
 
 | 门类 | 数量 | 代表 |
 |---|---|---|
-| 单向哈希 | 75 | SHA-2/3、BLAKE2/3、SM3、Streebog、Skein、Tiger、Whirlpool、Argon2 |
-| 对称加密 | 63 | AES/ARIA/Camellia/SM4/Serpent/Twofish、Adiantum、Ascon、ChaCha20 |
-| 非对称加密 | 31 | RSA-OAEP/PSS、SM2、SM9、IBE、SPAKE2+、SRP-6a、HPKE |
-| 后量子密码 | 26 | ML-KEM/DSA、SPHINCS+、HQC、sntrup761、McEliece（全 5 参数集）、FrodoKEM |
-| 编码 | 24 | Base64/32/58/85/91、Bech32/32m、BIP-39、Punycode |
-| 椭圆曲线与高级代数 | 22 | BLS12-381/377、BN254、Ed448/X448、KZG、Verkle、Bulletproofs |
+| 单向哈希 | 83 | SHA-2/3、BLAKE2/3、SM3、Streebog、Skein、Tiger、Whirlpool、Argon2 |
+| 对称加密 | 65 | AES/ARIA/Camellia/SM4/Serpent/Twofish、Adiantum、Ascon、ChaCha20 |
+| 非对称加密 | 65 | RSA-OAEP/PSS、SM2、SM9、IBE、SPAKE2+、SRP-6a、HPKE |
+| 后量子密码 | 29 | ML-KEM/DSA、SPHINCS+、HQC、sntrup761、McEliece（全 5 参数集）、FrodoKEM |
+| 编码 | 25 | Base64/32/58/85/91、Bech32/32m、BIP-39、Punycode |
+| 椭圆曲线与高级代数 | 23 | BLS12-381/377、BN254、Ed448/X448、KZG、Verkle、Bulletproofs |
 | 校验和 | 10 | CRC-8/16/24/32/32C/64、Adler32、FNV-1a |
 | 古典密码 | 6 | 维吉尼亚、Atbash、仿射、栅栏、Playfair、培根 |
 | 分布式与门限密码 | 4 | Shamir 拆分/还原、Feldman VSS、Pedersen DKG |

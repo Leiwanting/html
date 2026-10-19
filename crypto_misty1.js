@@ -108,15 +108,20 @@
     }
     var EK = new Uint16Array(100), DK = new Uint16Array(100);
     for (i = 0; i != 100; ++i) { EK[i] = KS[EK_ORDER[i]]; DK[i] = KS[DK_ORDER[i]]; }
-    return { EK: EK, DK: DK };
+    /* 预切 4 段轮密钥：原来每块都要 subarray 4 次（每次新建 TypedArray 视图） */
+    var RKe = [], RKd = [];
+    for (i = 0; i != 4; ++i) { RKe.push(EK.subarray(24 * i, 24 * i + 24)); RKd.push(DK.subarray(24 * i, 24 * i + 24)); }
+    return { EK: EK, DK: DK, RKe: RKe, RKd: RKd };
   }
 
-  function misty1Enc(pt, key) {
-    var ks = keySchedule(key), EK = ks.EK;
+  /* 预计算密钥编排版：ks 复用，避免每块重跑 FI×8 + 100 次表查 */
+  function misty1EncKS(pt, ks) {
+    var EK = ks.EK;
     var B0 = (pt[0]<<8)|pt[1], B1 = (pt[2]<<8)|pt[3], B2 = (pt[4]<<8)|pt[5], B3 = (pt[6]<<8)|pt[7];
     var j, T0, T1;
-    for (j = 0; j != 12; j += 3) {
-      var RK = EK.subarray(8*j, 8*j+24);
+    var RKe = ks.RKe;
+    for (j = 0; j != 4; j++) {
+      var RK = RKe[j];
       B1 ^= B0 & RK[0]; B0 ^= B1 | RK[1];
       B3 ^= B2 & RK[2]; B2 ^= B3 | RK[3];
       T0 = FI(B0 ^ RK[4], RK[5], RK[6]) ^ B1;
@@ -133,12 +138,13 @@
     return new Uint8Array([B2>>8, B2&255, B3>>8, B3&255, B0>>8, B0&255, B1>>8, B1&255]);
   }
 
-  function misty1Dec(ct, key) {
-    var ks = keySchedule(key), DK = ks.DK;
+  function misty1DecKS(ct, ks) {
+    var DK = ks.DK;
     var B0 = (ct[4]<<8)|ct[5], B1 = (ct[6]<<8)|ct[7], B2 = (ct[0]<<8)|ct[1], B3 = (ct[2]<<8)|ct[3];
     var j, T0, T1;
-    for (j = 0; j != 12; j += 3) {
-      var RK = DK.subarray(8*j, 8*j+24);
+    var RKd = ks.RKd;
+    for (j = 0; j != 4; j++) {
+      var RK = RKd[j];
       B2 ^= B3 | RK[0]; B3 ^= B2 & RK[1];
       B0 ^= B1 | RK[2]; B1 ^= B0 & RK[3];
       T0 = FI(B2 ^ RK[4], RK[5], RK[6]) ^ B3;
@@ -155,6 +161,11 @@
     return new Uint8Array([B0>>8, B0&255, B1>>8, B1&255, B2>>8, B2&255, B3>>8, B3&255]);
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { misty1Enc: misty1Enc, misty1Dec: misty1Dec };
-  global.MISTY1 = { misty1Enc: misty1Enc, misty1Dec: misty1Dec };
+  function misty1Enc(pt, key) { return misty1EncKS(pt, keySchedule(key)); }
+  function misty1Dec(ct, key) { return misty1DecKS(ct, keySchedule(key)); }
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = { misty1Enc: misty1Enc, misty1Dec: misty1Dec,
+    keySchedule: keySchedule, misty1EncKS: misty1EncKS, misty1DecKS: misty1DecKS };
+  global.MISTY1 = { misty1Enc: misty1Enc, misty1Dec: misty1Dec,
+    keySchedule: keySchedule, misty1EncKS: misty1EncKS, misty1DecKS: misty1DecKS };
 })(typeof window !== 'undefined' ? window : globalThis);

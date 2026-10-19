@@ -181,16 +181,15 @@
     return { Kh: Kh, Kl: Kl, Th: new Int32Array(3), Tl: new Int32Array(3) };
   }
   /* 分组密码形态：密钥 64 字节，tweak 全 0（Botan key_schedule 把 tweak 清零） */
-  function tf512Enc(pt, keyBytes) {
-    var st = tfSetKey(keyBytes);
+  /* 预计算版：st 复用。tfCore 在 feedfwd=false 时不修改 Kh/Kl，故可安全复用 */
+  function tf512EncKS(pt, st) {
     var t = loadWords(pt, 8);
     tfCore(t[0], t[1], st.Kh, st.Kl, st.Th, st.Tl, false);
     var out = new Uint8Array(64);
     storeWords(t[0], t[1], 8, out);
     return out;
   }
-  function tf512Dec(ct, keyBytes) {
-    var st = tfSetKey(keyBytes);
+  function tf512DecKS(ct, st) {
     var t = loadWords(ct, 8);
     tfCoreDec(t[0], t[1], st.Kh, st.Kl, st.Th, st.Tl);
     var out = new Uint8Array(64);
@@ -290,12 +289,17 @@
     return out;
   }
 
-  global.THREEFISH = { tf512Enc: tf512Enc, tf512Dec: tf512Dec };
+  function tf512Enc(pt, keyBytes) { return tf512EncKS(pt, tfSetKey(keyBytes)); }
+  function tf512Dec(ct, keyBytes) { return tf512DecKS(ct, tfSetKey(keyBytes)); }
+
+  global.THREEFISH = { tf512Enc: tf512Enc, tf512Dec: tf512Dec,
+                       tfSetKey: tfSetKey, tf512EncKS: tf512EncKS, tf512DecKS: tf512DecKS };
   /* _test 只给回归测试用：threefish.vec 里有一条带 tweak 的向量，
    普通分组密码入口固定 tweak=0，无法覆盖，只能从内部函数验证。 */
   global.SKEIN = { skeinHash: skeinHash, _test: { skeinInit: skeinInit, ubi: ubi, setTweak: setTweak, parity: parity, tfCore: tfCore } };
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { tf512Enc: tf512Enc, tf512Dec: tf512Dec, skeinHash: skeinHash };
+    module.exports = { tf512Enc: tf512Enc, tf512Dec: tf512Dec, skeinHash: skeinHash,
+                       tfSetKey: tfSetKey, tf512EncKS: tf512EncKS, tf512DecKS: tf512DecKS };
   }
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -311,8 +315,9 @@
       id: 'threefish512', name: 'Threefish-512（Skein 核心可调分组密码）', group: '对称加密',
       blockSize: 64, keyLen: 64,
       makeBlockFn: function (keyBytes) {
-        return { enc: function (b) { return tf.tf512Enc(b, keyBytes); },
-                 dec: function (b) { return tf.tf512Dec(b, keyBytes); } };
+        var st = tf.tfSetKey(keyBytes);
+        return { enc: function (b) { return tf.tf512EncKS(b, st); },
+                 dec: function (b) { return tf.tf512DecKS(b, st); } };
       },
       info: 'Skein 哈希的核心部件，块 512 位、密钥 512 位、另带 128 位 tweak（此处置 0）。72 轮，每 4 轮注入一次轮密钥，Skein 风格 MIX 只含加法/旋转/异或。\n【验证】Botan threefish.vec 官方向量。\n【注意】块为 64 字节，与限 16 字节块的模式（XTS/LRW）不兼容。'
     };

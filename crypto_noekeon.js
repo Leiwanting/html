@@ -85,8 +85,10 @@
     return b;
   }
 
-  function noekeonEnc(pt, key) {
-    var ks = keySchedule(key), A = toWords(pt), j;
+  /* 预计算密钥编排版：ks 由 keySchedule 算出后在整段数据上复用。
+     ⚠ 原来每块都跑一次 keySchedule（16 轮 theta+pi+gamma），64KB 数据 = 4096 次白算。 */
+  function noekeonEncKS(pt, ks) {
+    var A = toWords(pt), j;
     for (j = 0; j != 16; ++j) {
       A[0] = (A[0] ^ RC[j]) >>> 0;
       theta(A, ks.EK);
@@ -97,8 +99,8 @@
     return toBytes(A);
   }
 
-  function noekeonDec(ct, key) {
-    var ks = keySchedule(key), A = toWords(ct), j;
+  function noekeonDecKS(ct, ks) {
+    var A = toWords(ct), j;
     for (j = 16; j != 0; --j) {
       theta(A, ks.DK);
       A[0] = (A[0] ^ RC[j]) >>> 0;
@@ -109,8 +111,13 @@
     return toBytes(A);
   }
 
+  function noekeonEnc(pt, key) { return noekeonEncKS(pt, keySchedule(key)); }
+  function noekeonDec(ct, key) { return noekeonDecKS(ct, keySchedule(key)); }
+
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { noekeonEnc: noekeonEnc, noekeonDec: noekeonDec };
+    module.exports = { noekeonEnc: noekeonEnc, noekeonDec: noekeonDec,
+                       keySchedule: keySchedule, noekeonEncKS: noekeonEncKS, noekeonDecKS: noekeonDecKS };
   }
-  global.NOEKEON = { noekeonEnc: noekeonEnc, noekeonDec: noekeonDec };
+  global.NOEKEON = { noekeonEnc: noekeonEnc, noekeonDec: noekeonDec,
+                     keySchedule: keySchedule, noekeonEncKS: noekeonEncKS, noekeonDecKS: noekeonDecKS };
 })(typeof window !== 'undefined' ? window : globalThis);

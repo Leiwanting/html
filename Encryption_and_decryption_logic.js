@@ -11,11 +11,11 @@
  * ⚠ 改名时记得同步三处：本文件常量、index.html 的版本徽章与版本卡、
  *   CHANGELOG 的版本表。曾因只改一处导致界面与常量不一致。
  * ============================================================ */
-var APP_VERSION = '1.1.0';
+var APP_VERSION = '1.0.0';
 var APP_NAME = 'Aegis';
 var APP_CODENAME = 'AGS';
-var APP_TAGLINE = '268 种算法 · 零外部依赖';
-var BUILD_INFO = { algos: 268, stress: 2222, selfTest: 43 };
+var APP_TAGLINE = '149 种算法 · 零外部依赖';
+var BUILD_INFO = { algos: 296, stress: 2222, selfTest: 43 };
 
 
 /* ============================================================
@@ -94,8 +94,10 @@ function rotr32(x, n) { n &= 31; return ((x >>> n) | (x << (32 - n))) >>> 0; }
    evpMode='sha256'|'md5' 时走 EVP_BytesToKey（与 OpenSSL / CryptoJS 互通），
    否则把 salt 混进普通派生。 */
 async function deriveKeyBytes(keyStr, len, saltBytes, evpMode) {
-  if (evpMode && typeof evpBytesToKey === 'function' && saltBytes && saltBytes.length) {
-    var r = evpBytesToKey(keyStr || '', saltBytes, len, 0, evpMode === 'md5');
+  var evpNosalt = (evpMode === 'sha256nosalt' || evpMode === 'md5nosalt');
+  var evpBase = evpNosalt ? evpMode.replace('nosalt', '') : evpMode;
+  if (evpBase && typeof evpBytesToKey === 'function' && (evpNosalt || (saltBytes && saltBytes.length))) {
+    var r = evpBytesToKey(keyStr || '', (saltBytes || new Uint8Array(0)), len, 0, evpBase === 'md5');
     return new Uint8Array(r.key);
   }
   if (typeof deriveKeyFromPassword === 'function') {
@@ -464,10 +466,49 @@ function modeEnc(plain, bs, blockFn, mode, padMode, iv) {
   if (mode === 'CFB') return cfbEnc(plain, bs, blockFn, iv);
   if (mode === 'OFB') return ofbEnc(plain, bs, blockFn, iv);
   if (mode === 'CTR') return ctrEnc(plain, bs, blockFn, iv);
+  if (mode === 'IGE') return igeEnc(plain, bs, blockFn, padMode, iv);
   throw new Error('未知模式: ' + mode);
 }
 /* CFB / OFB / CTR 是流模式：解密同样要用「加密函数」生成密钥流，
    只有 ECB / CBC 才用解密函数。encFn 缺省时退回 invFn 以兼容旧调用。 */
+/* ---- IGE（Infinite Garble Extension，OpenSSL 的 -ige 模式）----
+ * 加密：C_i = Enc(P_i ⊕ C_{i-1}) ⊕ P_{i-1}
+ * 解密：P_i = Dec(C_i ⊕ P_{i-1}) ⊕ C_{i-1}
+ * IV 长 2×块长：前一半是密文反馈初值 C_0，后一半是明文反馈初值 P_0。
+ * 【顺序不可互换】早期版本把两半写反了（前明文后密文），与权威实现结果不同。
+ * 现顺序已用 Telegram tgcrypto(C) + pyrogram(pyaes) + telethon 三个独立实现逐字节对拍确认，
+ * 三者完全一致；这也是 OpenSSL -ige 的语义。 */
+function igeEnc(plain, bs, blockFn, padMode, iv) {
+  var d = applyPad(plain, bs, padMode);
+  var out = new Uint8Array(d.length);
+  /* 必须是拷贝而不是 subarray 视图：循环里要更新 xp/cp，
+     用视图会直接改写调用方的 IV（加密后回写 IV 框时就会给出被污染的值）。 */
+  var cp = iv.subarray(0, bs).slice(), xp = iv.subarray(bs, bs * 2).slice();
+  var P = new Uint8Array(bs), C = new Uint8Array(bs), i, j, x = new Uint8Array(bs), y;
+  for (i = 0; i < d.length; i += bs) {
+    for (j = 0; j < bs; j++) x[j] = d[i + j] ^ cp[j];
+    y = blockFn(x);
+    for (j = 0; j < bs; j++) C[j] = y[j] ^ xp[j];
+    out.set(C, i);
+    P.set(d.subarray(i, i + bs)); cp.set(C); xp.set(P);
+  }
+  return out;
+}
+function igeDec(cipher, bs, invFn, padMode, iv) {
+  if (cipher.length === 0 || cipher.length % bs !== 0) throw new Error('IGE 密文长度必须是块大小 ' + bs + ' 的整数倍');
+  var out = new Uint8Array(cipher.length);
+  var cp = iv.subarray(0, bs).slice(), xp = iv.subarray(bs, bs * 2).slice();
+  var P = new Uint8Array(bs), C = new Uint8Array(bs), i, j, x = new Uint8Array(bs), y;
+  for (i = 0; i < cipher.length; i += bs) {
+    C.set(cipher.subarray(i, i + bs));
+    for (j = 0; j < bs; j++) x[j] = C[j] ^ xp[j];
+    y = invFn(x);
+    for (j = 0; j < bs; j++) P[j] = y[j] ^ cp[j];
+    out.set(P, i);
+    xp.set(P); cp.set(C);
+  }
+  return applyUnpad(out, bs, padMode);
+}
 function modeDec(cipher, bs, invFn, mode, padMode, iv, encFn) {
   if (mode === 'ECB') return ecbDec(cipher, bs, invFn, padMode);
   if (mode === 'CBC') return cbcDec(cipher, bs, invFn, padMode, iv);
@@ -475,6 +516,7 @@ function modeDec(cipher, bs, invFn, mode, padMode, iv, encFn) {
   if (mode === 'CFB') return cfbDec(cipher, bs, streamFn, iv);
   if (mode === 'OFB') return ofbDec(cipher, bs, streamFn, iv);
   if (mode === 'CTR') return ctrDec(cipher, bs, streamFn, iv);
+  if (mode === 'IGE') return igeDec(cipher, bs, invFn, padMode, iv);
   throw new Error('未知模式: ' + mode);
 }
 var AEAD_MODES = ['GCM', 'CCM', 'SIV', 'EAX', 'OCB'];
@@ -518,7 +560,7 @@ function modeSupportedBy(mode, algo) {
 function fallbackModeFor(algo) {
   return 'CBC';
 }
-function modeNeedsIV(mode) { return mode !== 'ECB' && mode !== 'XTS' && !isAEAD(mode); }
+function modeNeedsIV(mode) { return mode !== 'ECB' && mode !== 'XTS' && mode !== 'IGE' && !isAEAD(mode); }
 
 /* IV 框在 XTS 下用作 tweak 输入，所以也要显示 */
 function modeShowsIVField(mode) { return mode !== 'ECB'; }
@@ -1558,6 +1600,11 @@ function base85Decode(str) {
       if (c < 33 || c > 117) throw new Error('非法的 Base85 字符: ' + s[i]);
       n = n * 85 + (c - 33); count++; i++;
     }
+    /* 末组不足 5 字符时必须按 'u'(84) 补齐到 5 位，不能按 0 补。
+       编码端是把不足 4 字节的块右侧补零、再取 5 位 85 进制的前 (len+1) 位，
+       被截掉的是【低位】；解码只有先还原成满 5 位、再丢弃同样的低位，
+       字节边界才对得上。按 0 补会让末组整体右移，长度非 4 倍数时解出乱码。 */
+    for (var p = count; p < 5; p++) n = n * 85 + 84;
     var bc = count - 1;
     var tmp = [0,0,0,0];
     for (var j = 3; j >= 0; j--) { tmp[j] = n % 256; n = Math.floor(n / 256); }
@@ -1749,12 +1796,22 @@ var FMT_LIST = (typeof OUT_FORMATS === 'object') ? Object.keys(OUT_FORMATS) : ['
    embedIV = true  → 把 IV 拼在密文头部（兼容旧格式）
    embedIV = false → 密文里不含 IV，调用方负责把 iv 单独保存/回写到界面
    ivProvided     → 区分 IV 是用户填的还是本次自动生成的 */
+function pemArmorCipher(b) {
+  var b64 = bytesToBase64(b).replace(/(.{64})/g, '$1\n');
+  return '-----BEGIN CIPHER-----\n' + b64 + '\n-----END CIPHER-----';
+}
+function pemDearchor(s) {
+  var m = String(s).match(/-----BEGIN ([A-Z0-9 ]+)-----([\s\S]*?)-----END \1-----/);
+  if (!m) throw new Error('PEM 装甲格式不正确：应有 -----BEGIN CIPHER----- / -----END CIPHER----- 两行');
+  return base64ToBytes(m[2].replace(/\s+/g, ''));
+}
 async function symEncrypt(algo, bytes, key, mode, padMode, ivHex, embedIV, aadStr, saltHex, tagLen) {
   var bs = algo.blockSize;
   var saltB = saltHex ? hexToBytes(saltHex) : null;
   var evpM = null;
   if (typeof CURRENT_CONTAINER !== 'undefined') {
     if (CURRENT_CONTAINER === 'openssl') evpM = 'sha256';
+    else if (CURRENT_CONTAINER === 'openssl-nosalt') evpM = 'sha256nosalt';
     else if (CURRENT_CONTAINER === 'cryptojs') evpM = 'md5';
   }
   if ((evpM === 'sha256' || evpM === 'md5') && !saltB) {
@@ -1868,6 +1925,12 @@ async function symEncrypt(algo, bytes, key, mode, padMode, ivHex, embedIV, aadSt
     if (ivHex) ivProvided = true;
     return { ciphertext: lrwEnc(bytes, lbf, lk2, liv), iv: liv, ivProvided: ivProvided , salt: saltUsed };
   }
+  if (mode === 'IGE') {
+    var igv = ivHex ? hexToBytes(ivHex) : crypto.getRandomValues(new Uint8Array(bs * 2));
+    if (igv.length !== bs * 2) throw new Error('IGE 的 IV 必须为 ' + (bs * 2) + ' 字节（' + (bs * 4) + ' 位 Hex）：前 ' + bs + ' 字节是明文反馈初值，后 ' + bs + ' 字节是密文反馈初值');
+    if (ivHex) ivProvided = true;
+    return { ciphertext: igeEnc(bytes, bs, bf.enc, padMode, igv), iv: igv, ivProvided: ivProvided, salt: saltUsed };
+  }
   if (modeNeedsIV(mode)) {
     if (ivHex) {
       iv = hexToBytes(ivHex);
@@ -1890,6 +1953,7 @@ async function symDecrypt(algo, cipher, key, mode, padMode, ivHex, aadStr, saltH
   var evpM = null;
   if (typeof CURRENT_CONTAINER !== 'undefined') {
     if (CURRENT_CONTAINER === 'openssl') evpM = 'sha256';
+    else if (CURRENT_CONTAINER === 'openssl-nosalt') evpM = 'sha256nosalt';
     else if (CURRENT_CONTAINER === 'cryptojs') evpM = 'md5';
   }
   var iv = null;
@@ -1965,6 +2029,12 @@ async function symDecrypt(algo, cipher, key, mode, padMode, ivHex, aadStr, saltH
     return xtsDec(cipher, dbf, tbf, tw);
   }
   var bf = bf0;
+  if (mode === 'IGE') {
+    if (!ivHex) throw new Error('IGE 解密必须提供 IV（' + (bs * 2) + ' 字节，填在 IV 框）');
+    var igv2 = hexToBytes(ivHex);
+    if (igv2.length !== bs * 2) throw new Error('IGE 的 IV 必须为 ' + (bs * 2) + ' 字节');
+    return igeDec(cipher, bs, bf.dec, padMode, igv2);
+  }
   if (modeNeedsIV(mode)) {
     if (ivHex) {
       iv = hexToBytes(ivHex);
@@ -2730,6 +2800,13 @@ async function runEncrypt() {
       window.CURRENT_CONTAINER = cont;
       /* IV 不再拼进密文头部：留空时自动生成并回写到 IV 输入框，由用户单独保存 */
       var r = await symEncrypt(a, bytes, key, mode, padMode, ivHex, false, isAEAD(mode) ? (aad || param) : '', saltHex, tagLen);
+      /* 「随机生成」密钥模式：把实际用到的密钥回写到密钥框并切到 Hex 原始密钥，
+         否则用户永远拿不到这次用的密钥，也无法解密。 */
+      if (window._lastRandKeyHex) {
+        if (els.key) els.key.value = window._lastRandKeyHex;
+        if (els.keyMode) els.keyMode.value = 'raw';
+        window._lastRandKeyHex = null;
+      }
       var outBytes = r.ciphertext;
       if (cont === 'openssl') {
         /* 必须用 symEncrypt 内部实际派生所用的 salt，不能另生成一个 */
@@ -2759,6 +2836,37 @@ async function runEncrypt() {
           els.ivInfoValue.textContent = bytesToHex(r.iv);
         }
         setMsg('加密完成（PGP ASCII Armor，含 CRC24 校验）', 'ok');
+        return;
+      } else if (cont === 'ivct') {
+        if (!r.iv || !r.iv.length) throw new Error('IV‖密文 容器需要 IV，ECB 模式不适用');
+        outBytes = concatBytes(r.iv, outBytes);
+        if (!r.ivProvided && els.iv) els.iv.value = bytesToHex(r.iv);
+      } else if (cont === 'openssl-nosalt') {
+        if (els.salt) els.salt.value = '';
+      } else if (cont === 'json') {
+        renderOutput(JSON.stringify({
+          v: 1, alg: a.id, mode: mode, pad: padMode,
+          iv: r.iv ? bytesToHex(r.iv) : '',
+          salt: window._lastKdfSalt ? bytesToHex(window._lastKdfSalt) : '',
+          ct: bytesToBase64(outBytes)
+        }));
+        if (r.iv && els.ivInfoBox) {
+          if (!r.ivProvided && els.iv) els.iv.value = bytesToHex(r.iv);
+          els.ivInfoBox.classList.remove('hidden');
+          els.ivInfoLabel.textContent = 'IV（Hex，已写入 JSON 并回填输入框）：';
+          els.ivInfoValue.textContent = bytesToHex(r.iv);
+        }
+        setMsg('加密完成（JSON 全参数容器：密文、IV、盐、模式都在里面，解密时自动读取）', 'ok');
+        return;
+      } else if (cont === 'pem') {
+        renderOutput(pemArmorCipher(outBytes));
+        if (r.iv && els.ivInfoBox) {
+          if (!r.ivProvided && els.iv) els.iv.value = bytesToHex(r.iv);
+          els.ivInfoBox.classList.remove('hidden');
+          els.ivInfoLabel.textContent = 'IV（Hex，已自动填入上方 IV 框）：';
+          els.ivInfoValue.textContent = bytesToHex(r.iv);
+        }
+        setMsg('加密完成（PEM 装甲；只做文本封装，不携带 IV，IV 请另行保存）', 'ok');
         return;
       } else if (cont === 'jwe') {
         var cek = await deriveKeyBytes(key, 32, null, null);
@@ -2849,7 +2957,7 @@ async function runDecrypt() {
       /* 文本型容器（PGP Armor / CryptoJS JSON / JWE）自带编码，
          不能再按 fmt 做 base64/hex 解码，否则会把 ASCII 文本当成密文拆坏。
          注意 cont3 必须先于 cipher 定义——var 提升会让它变成 undefined。 */
-      var cipher = (cont3 === 'pgp' || cont3 === 'cryptojs' || cont3 === 'jwe')
+      var cipher = (cont3 === 'pgp' || cont3 === 'cryptojs' || cont3 === 'jwe' || cont3 === 'json' || cont3 === 'pem')
         ? strToBytes(String(text))
         : bytesIn(text, fmt);
       /* 解容器：openssl/cryptojs 要顺带取出 salt（密钥派生要用），
@@ -2866,6 +2974,24 @@ async function runDecrypt() {
         if (u2.iv && u2.iv.length && !ivHex) { ivHex = bytesToHex(u2.iv); if (els.iv) els.iv.value = ivHex; }
       } else if (cont3 === 'pgp') {
         cipher = pgpDearchor(bytesToStr(cipher));
+      } else if (cont3 === 'openssl-nosalt') {
+        /* 无盐 OpenSSL：密钥派生不得掺入任何盐，否则与加密端算出的密钥不一致 */
+        saltHex2 = '';
+        if (els.salt) els.salt.value = '';
+      } else if (cont3 === 'ivct') {
+        var bs2 = a.blockSize || 16;
+        if (cipher.length <= bs2) throw new Error('IV‖密文 容器的数据过短（至少要 IV + 1 个块）');
+        var ivb2 = cipher.subarray(0, bs2);
+        if (!ivHex) { ivHex = bytesToHex(ivb2); if (els.iv) els.iv.value = ivHex; }
+        cipher = cipher.subarray(bs2);
+      } else if (cont3 === 'json') {
+        var jo = JSON.parse(String(text).trim());
+        if (!jo || typeof jo.ct !== 'string') throw new Error('JSON 容器缺少 ct 字段');
+        cipher = base64ToBytes(jo.ct);
+        if (jo.iv && !ivHex) { ivHex = String(jo.iv); if (els.iv) els.iv.value = ivHex; }
+        if (jo.salt) { saltHex2 = String(jo.salt); if (els.salt) els.salt.value = saltHex2; }
+      } else if (cont3 === 'pem') {
+        cipher = pemDearchor(String(text));
       } else if (cont3 === 'jwe') {
         var cek2 = await deriveKeyBytes(key, 32, null, null);
         cipher = await jweDecrypt(String(text).trim(), cek2);
@@ -3124,9 +3250,20 @@ function init() {
       var applyKeyMode = function () {
         var m = els.keyMode.value;
         if (typeof setKeyMode === 'function') setKeyMode(m);
-        var raw = (m === 'raw');
-        if (els.keyLabel) els.keyLabel.textContent = raw ? '密钥（Hex 原始密钥）' : '密钥 / 口令';
-        if (els.key) els.key.placeholder = raw ? '例如 32 字节密钥 = 64 位 Hex' : '输入口令';
+        var raw = (m === 'raw' || m === 'rawb64' || m === 'rawtext' || m === 'rawdec' || m === 'rand');
+        var KL = {
+          raw: '密钥（Hex 原始密钥）', rawb64: '密钥（Base64 原始密钥）',
+          rawtext: '密钥（文本原始密钥，UTF-8）', rawdec: '密钥（十进制数组，如 12,34,56）',
+          rand: '密钥（留空则自动生成随机密钥）'
+        };
+        var PH = {
+          raw: '例如 32 字节密钥 = 64 位 Hex', rawb64: 'Base64 字符串，解码后须等于算法要求的长度',
+          rawtext: '直接填文本，按 UTF-8 字节当密钥（弱，仅兼容旧系统）',
+          rawdec: '十进制数组，如 12,34,56，元素 0~255',
+          rand: '留空即可；加密后会把实际使用的密钥回写到本框'
+        };
+        if (els.keyLabel) els.keyLabel.textContent = raw ? (KL[m] || '密钥') : '密钥 / 口令';
+        if (els.key) els.key.placeholder = raw ? (PH[m] || '请输入原始密钥') : '输入口令';
         ['kdfField', 'kdfHashField', 'kdfIterField', 'saltField'].forEach(function (n) {
           var el = els[n] || (typeof document !== 'undefined' ? document.getElementById(n) : null);
           if (el) el.classList.toggle('hidden', raw);
@@ -3136,7 +3273,7 @@ function init() {
       els.keyMode.addEventListener('change', applyKeyMode);
       applyKeyMode();
     }
-    var KDF_COST_DEFAULT = { kdf2: '210000', argon2id: '2', argon2i: '2', argon2d: '2', scrypt: '14', bcrypt: '10', legacy: '' };
+    var KDF_COST_DEFAULT = { kdf2: '210000', argon2id: '2', argon2i: '2', argon2d: '2', scrypt: '14', bcrypt: '10', legacy: '', pbkdf1: '1000', bcryptpbkdf: '16', sp56a: '', sp56c: '', tls12: '', x942: '' };
     var kdfCustom = {};      /* 记住用户在各档位手填过的参数，切换档位回来时保留 */
     var KDF_COST_LABEL = {
       kdf2: 'PBKDF2 迭代次数（建议 ≥ 210000）',
@@ -3145,6 +3282,9 @@ function init() {
       argon2d: 'Argon2d 轮数 t（1~10，默认 2）',
       scrypt: 'scrypt 的 N 指数（10~20，默认 14）',
       bcrypt: 'bcrypt cost（4~18，默认 10）',
+      pbkdf1: 'PBKDF1 迭代次数（1~1000000，默认 1000；最多派生 20 字节）',
+      bcryptpbkdf: 'bcrypt-pbkdf 轮数（1~64，默认 16）',
+      sp56a: '', sp56c: '', tls12: '', x942: '',
       legacy: ''
     };
     if (els.kdf) {
@@ -3152,11 +3292,12 @@ function init() {
         var m = els.kdf.value;
         if (typeof setKdfMode === 'function') setKdfMode(m);
         var legacy = (m === 'legacy');
-        if (els.kdfHashField) els.kdfHashField.classList.toggle('hidden', m !== 'kdf2');
-        if (els.kdfIterField) els.kdfIterField.classList.toggle('hidden', legacy);
+        var noCost = (m === 'sp56a' || m === 'sp56c' || m === 'tls12' || m === 'x942');
+        if (els.kdfHashField) els.kdfHashField.classList.toggle('hidden', !(m === 'kdf2' || m === 'sp56a' || m === 'sp56c' || m === 'tls12'));
+        if (els.kdfIterField) els.kdfIterField.classList.toggle('hidden', legacy || noCost);
         if (els.kdfIterLabel && KDF_COST_LABEL[m]) els.kdfIterLabel.textContent = KDF_COST_LABEL[m];
         var key = 'cost_' + m;
-        if (els.kdfIter && KDF_COST_DEFAULT[m] !== undefined) {
+        if (els.kdfIter && KDF_COST_DEFAULT[m] !== undefined && !noCost) {
           if (kdfCustom[key] !== undefined) els.kdfIter.value = kdfCustom[key];
           else els.kdfIter.value = KDF_COST_DEFAULT[m];
         }

@@ -1680,3 +1680,438 @@ RFC 6979 + P-384       → 连带受影响
 
 另：为跑参照程序自写的 SHA-512 第一版结果全错 —— 填充时只清了前 8 个长度字节，
 后 8 个是内存垃圾（空字符串时最明显）。修好后与 Python 标准库逐条对上，16 种长度全过。
+
+---
+
+## 第五十九批：LION 与 ChaCha_RNG（前两批判定"做不成"的两项，本批攻克）
+
+上一批把这两项列为"不采纳/未做成"，理由是向量太少或调用语义无法确定。本批通过
+精读 Botan 源码 + 反推官方向量，两项全部攻克并通过官方向量。
+
+### 1. LION(SHA-160, RC4, 64) —— 新增算法
+
+来源：Botan `src/tests/data/block/lion.vec`（1 组）+ `src/lib/block/lion/lion.cpp/h`。
+
+**上一批失败的根因是三个结构误判，不是代码写错：**
+
+| 项 | 上一批的误判 | 官方源码的实际语义 |
+|---|---|---|
+| `left_size()` | 当成 `block_size/2` = 32 | **= 哈希输出长度 = 20** |
+| `right_size()` | 32 | **44**（= 64 − 20） |
+| `key1/key2` 长度 | 16 字节（= key.length/2） | **20 字节**（resize 到 left_size 后清零，只填前 16，后 4 位恒为 0） |
+
+关键点：`key_schedule` 里 `half = length/2 = 16`，但 `m_key1/m_key2` 被 `resize(left_size())`
+即 20 字节并**先清零**再 copy，因此尾部 4 字节是补零而非密钥内容。
+
+按此重写后**一次命中**官方向量（MATCH，逐字节）。
+
+**向量扩充**：官方仅 1 组，不足以支撑回归。用按官方源码写的 Python 参考实现生成
+24 组随机交叉向量（含 1/2/3 块），加密+解密往返全部自洽，固化进
+`testvectors/lion_xvec.txt`。参考实现本身已被官方那 1 组锚定，故交叉向量可信。
+
+### 2. ChaCha_RNG —— 新增算法
+
+来源：Botan `src/tests/data/rng/chacha_rng.vec`（21 组）+ `chacha_rng.cpp` +
+`stateful_rng.cpp` + `chacha.cpp`。
+
+**上一批卡在"缺 tests/*.cpp，无法确定调用顺序"。本批用反推法定出：**
+
+```
+add_entropy(EI) → add_entropy(EIR) → generate(64, AI1)【丢弃】→ generate(64, AI2)【= Out】
+```
+
+即 Botan/NIST CAVS 的「连续两次生成、Out 取第二次」。判据：
+
+- 第一组（EI = EIR = 全零、无 AdditionalInput）的 Out 精确落在 reseed 后
+  keystream 的 **偏移 96** 而非 32 —— 差的那 64 字节正是被丢弃的第一次生成。
+- 第二组（有 AI1/AI2）的 Out 前 32 与后 32 字节**同时**命中
+  `HMAC(HKa1b, AI2)` 所在 keystream 的 off=32 与 off=64，证明两次 generate
+  各自伴随一次 update，且 Out 只取第二次。
+
+`update()` 语义照抄源码：`CK' = HMAC(HK, input)`；`HK' = ChaCha20(CK')` 前 32 字节。
+`clear_state()` 的初始 HK 为全零，初始 CK = HMAC(全零 key, 空消息)。
+
+结果：**21/21 全过**。
+
+### 3. 本批我自己栽的坑：又把"标准值"记错了
+
+验证 ChaCha_RNG 前先自测 ChaCha20，我拿记忆中的 keystream 标准值比对，
+结果第 8 字节 `0x50` 对不上实现算出的 `0x40`，一度以为 ChaCha20 实现有错。
+
+用 `cryptography` 库做独立裁判后确认：**实现是对的，是我记忆的"标准值"错了**。
+
+这是本项目第 N 次"参照物错了"（此前有 Skein 位移量、bcrypt 参数格式、
+RSA-KEM 的 C0/R、MCEDBG 等）。定下的规矩再次生效：
+**期望值一律解析自官方文件或独立实现，不凭记忆手写。**
+
+### 4. 验证数据（从 zip 解压目录独立复算）
+
+```
+脚本加载        71/71 成功
+ALGOS           276   唯一 276   重复 0
+说明超 200 字   0
+LION            25 组 × 2（加密+解密）= 50   全过（含官方 1/1）
+ChaCha_RNG      21 组   全过
+健壮性          非法输入抛错 3/3
+```
+
+全部走 `reg` 注册的 `enc` 入口，覆盖「文本解析 → 算法 → 输出」整条界面链路。
+
+### 5. 本批改动文件
+
+| 文件 | 说明 |
+|---|---|
+| `crypto_lion_chacha.js` | **新增**，md5 `dbfe34eb4dae5b2d258207d065ded538` |
+| `index.html` | 加一行 script 引用 |
+| `Encryption_and_decryption_logic.js` | 版本号 274 → 276 |
+| `算法清单.txt` | 重生成 |
+| `testvectors/lion_xvec.txt` | **新增**，25 组（含官方 1 组） |
+| `testvectors/chacha_rng.vec` | **新增**，Botan 官方 21 组 |
+
+
+---
+
+## 第六十一批：ECDSA 公钥恢复 / HKDF-Expand-Label / Passhash9（算法 282 → 286）
+
+### 新增 4 个算法
+
+| id | 名称 | 官方向量 |
+|---|---|---|
+| `ecdsa-recover` | ECDSA 公钥恢复（从签名还原公钥） | Botan `pubkey/ecdsa_key_recovery.vec` 2/2 |
+| `hkdf-expand-label` | HKDF-Expand-Label（双语义） | Botan `hkdf_label.vec` 4/4 + OpenSSL 真实会话 9/9 |
+| `passhash9` | Passhash9 口令哈希（Botan `$9$`） | Botan `passhash/passhash9.vec` 1/1 |
+| `passhash9-verify` | Passhash9 校验（恒定时间比对） | 同上 1/1 |
+
+### ⚠ 最重要的发现：HKDF-Expand-Label 有两个官方语义
+
+`tls13 ` 前缀**不是**所有规范都加：
+
+| 规范 | info 结构 | 验证来源 |
+|---|---|---|
+| RFC 8446（TLS 1.3） | `BE16(len)‖len(‖"tls13 "+label)‖"tls13 "+label‖len(ctx)‖ctx` | OpenSSL 3.0.2 真实会话 |
+| Botan / BoringSSL Go 版 | `BE16(len)‖len(label)‖label‖len(ctx)‖ctx`（**无前缀**） | Botan `hkdf_label.vec` |
+
+先用 Botan 向量跑，4/4 全错；而同一份代码解密真实 OpenSSL 会话却 9/9 全对 ——
+两个方向相反的证据才逼出「同名不同义」的结论。**这与第五十四批 SP 800-56C
+（展开步不是 56A 而是 108 Feedback）是同一类坑。**
+
+处理：做成显式开关 `prefix=tls13`（默认，加前缀）/ `prefix=none`（不加），
+**不自动猜测** —— 静默降级正是这类 bug 的根源。
+
+### 权威验证：OpenSSL 真实 TLS 1.3 会话端到端
+
+Botan 向量不足以证明 TLS 1.3 语义，故另建端到端链路：
+
+1. `openssl s_server` / `s_client` 跑真实 TLS 1.3 握手（强制 `TLS_AES_128_GCM_SHA256`）
+2. 用 `-keylogfile` 导出 OpenSSL **自己算出**的 traffic secret（权威参照物）
+3. 用界面入口 `hkdf-expand-label` 派生 key/iv
+4. 用 Python `cryptography` 的 AES-GCM 解密 Python 代理抓到的真实记录
+
+结果：**9/9 条加密记录全部解密成功**（AES-GCM tag 校验通过 = key/iv/nonce/AAD 全对）：
+
+| 记录 | 密钥 | 解出内容 |
+|---|---|---|
+| c2s #0 | CHS | ClientFinished（36B） |
+| c2s #1 | CAS | close_notify alert（2B） |
+| s2c #0~3 | SHS | EncryptedExtensions / Certificate / CertVerify / Finished |
+| s2c #4~5 | SAS | NewSessionTicket ×2 |
+| s2c #6 | SAS | close_notify alert（2B） |
+
+### 踩坑（全部是「参照物错了」，实现本身没问题）
+
+1. **TLS 1.3 的 seq_num 在每个密钥世代归零重置** —— 切换 handshake→application 密钥时
+   seq 不连续。第一版按连续编号，application secret 那几条全判失败；改成按世代独立
+   计数后立刻 9/9。
+2. **握手记录用 handshake traffic secret，不是 application** —— 一开始把两条记录都用
+   `CLIENT_TRAFFIC_SECRET_0` 去解，全失败。
+3. **Passhash9 字段布局** —— 官方是 `alg_id(1)‖work_factor(2 字节 BE)‖salt(12)‖hash(24)`
+   共 39 字节，我测试脚本按 `wf` 1 字节、`salt` 从偏移 2 解析，得到 wf=0 而抛错。
+   **实现是对的，是解析错了。**
+4. **`s_server` 不支持 `-keylogfile`**；且 `-naccept 1` 会把「就绪探测连接」当成真实连接
+   而提前退出 —— 就绪检测改成纯等待。
+5. **EAX/OCB 回归脚本没按 tagLen 比较** —— EAX 的 `got` 前缀与 `exp` 完全一致只是没截断；
+   OCB 压根没传 `tagLen`。修脚本后 EAX 106/106、OCB 42/42（此前显示 104/2 与 41/1）。
+
+### 顺带修的可用性缺陷
+
+官方向量的 label 是 `TLS 1.3, something or other`，**自带逗号**，而入口用逗号分隔参数会被
+切成两半（长度看不出异常）。新增 `_splitParams` 支持双引号包裹字段。
+
+### 验证
+
+```
+脚本加载        73/73
+ALGOS           286  唯一 286  重复 0
+说明超 200 字   0
+BUILD_INFO      algos 286 → 一致
+misc6 官方向量  12/12（含界面入口 4/4）
+EAX 106/106   OCB 42/42
+TLS 1.3 端到端 9/9
+```
+
+---
+
+## 第 63 批：分组密码密钥编排复用优化（NOEKEON / MISTY1 / KASUMI / Threefish-512）
+
+### 背景
+
+上一批修 CAST-256 时发现：它每个数据块都要重算一次密钥编排，64KB 数据 = 白算 4096 次。
+顺着这个思路扫了全项目同类写法，定位到 4 个算法同样中招。
+
+### 改动
+
+| 文件 | 改动 |
+|---|---|
+| `crypto_noekeon.js` | 拆出 `noekeonEncKS/DecKS`，导出 `keySchedule`；原 `Enc/Dec(pt,key)` 保留为包装 |
+| `crypto_misty1.js` | 同上，另在 `keySchedule` 里预切 4 段轮密钥（原来每块 subarray 4 次） |
+| `crypto_kasumi.js` | 同上 |
+| `crypto_skein.js` | 拆出 `tf512EncKS/DecKS`，导出 `tfSetKey` |
+| `crypto_lightweight.js` | 新增 `mkKs()` 包装，noekeon/misty1/kasumi 改走它；threefish512 同理 |
+
+保持向后兼容：所有 `*Enc(pt,key)` 原签名不变，测试脚本无需改。
+
+### 提速（64KB，同一脚本 A/B、预热后）
+
+| 算法 | 旧 | 新 | 提速 |
+|---|---|---|---|
+| MISTY1 | 12.7 ms | 1.5 ms | 8.3x |
+| KASUMI | 7.0 ms | 2.4 ms | 2.9x |
+| NOEKEON | 3.3 ms | 1.5 ms | 2.2x |
+| Threefish-512 | 4.1 ms | 3.5 ms | 1.2x |
+
+### 验证
+
+- **复用安全性 2880/2880**：30 组随机密钥 × 6 块 × 加解密 × 4 算法，
+  "复用同一 ks" 与 "每块新建 ks" 结果逐字节一致 → 确认 Enc/Dec 不污染 ks。
+  关键风险点是 Threefish：`tfCore` 在 `feedfwd=false` 时不修改 `Kh/Kl`，已实测确认。
+- **官方向量（优化后重跑）**：NOEKEON 1030/1030（Botan `noekeon.vec`）、
+  Threefish-512 4/4（Botan `threefish.vec`，第 5 条带 Tweak 跳过，入口固定 tweak=0）、
+  MISTY1 7/7（RFC 2994 App.A + NESSIE）、KASUMI 5/5（3GPP TS 35.203 Test Set 1）。
+- **健康检查**：script 74/74 加载、ALGOS 289 唯一 289、说明超 200 字 0。
+
+### 踩坑（全是测试脚本的问题，不是实现的问题）
+
+1. **向量解析器没处理多块**：Botan `noekeon.vec` 有一组 `In` 是 192 字节（12 块）、
+   `threefish.vec` 有一组是 128 字节（2 块）。我只加密第 1 块，
+   表现为 "got 前 32 个 hex 与 exp 完全相同却判 FAIL" —— 又是"长度正确、内容部分对"。
+2. **带 Tweak 的向量**：`threefish.vec` 最后一条有 `Tweak` 字段，
+   分组密码入口固定 tweak=0，天然覆盖不到（此前用 `_test` 钩子验证），测试里显式跳过。
+3. **首次测速受 JIT 预热影响**：第一轮 A/B 显示 Threefish 提速 10.95x、
+   第二轮只有 1.19x。取第二轮（预热后）为准 —— 与上一批"ARIA 慢 20 倍"是同一类假象。
+
+### 说明
+
+本批只做优化，算法数不变（289）。
+
+
+## 第六十二批：界面四栏扩容（密钥输入 / 加密模式 / 封装格式 / 口令派生 / 密文格式）+ IGE 模式
+
+### 新增能力
+- **密钥栏 6 种输入方式**：口令（KDF）、原始密钥 Hex / Base64 / 文本 UTF-8 / 十进制数组、随机生成（加密后回写实际密钥并切到 Hex 模式）。
+- **加密模式 +1**：IGE（Infinite Garble Extension）。C_i = Enc(P_i ⊕ C_{i-1}) ⊕ P_{i-1}，IV 长 2×块长（前一半明文反馈初值、后一半密文反馈初值）。
+- **封装格式 +4**：IV‖密文（前缀拼接）、OpenSSL 无盐（-nosalt，走 EVP_BytesToKey 但不带 Salted__ 头）、JSON 全参数（{v,alg,mode,pad,iv,salt,ct}）、PEM 装甲。
+- **口令派生 +6**：PBKDF1、bcrypt-pbkdf、SP 800-56A 单步 KDF（HMAC）、SP 800-56C 两步 KDF、TLS 1.2 PRF、ANSI X9.42 PRF。前五个复用已有官方向量验证过的内核（kdf2/kdf5/kdf_nist3），只是把内核暴露给下拉框。
+- **密文格式 14 → 23**：修复了「crypto_outfmt.js 合并的 9 种格式从未进下拉框」的老问题（core 末尾的 initFmtSelect 先执行，扩展格式合并在后），再新增 JSON 数组与 Base64（MIME 76 换行）两种可逆格式。
+- 删除三个过时的批次说明面板（新增算法使用说明 / 第三批 / 第四批）。
+
+### 挖到的两个 bug
+1. **IGE 就地污染 IV**（致命）：igeEnc/igeDec 用 `iv.subarray(...)` 拿视图并 `set()`，反馈更新直接写回调用方的 IV。表现为加密成功、IV 框回写的却是「最后一个明文块 ‖ 最后一个密文块」，解密必然报「填充无效」。改为 `.slice()` 拷贝后修复。与之前 CAST-256 浅拷贝轮密钥是同一类。
+2. **OpenSSL 无盐容器解密用错盐**：解密端 saltHex2 会回退到 _lastKdfSalt 残留值，掺进本应无盐的 EVP_BytesToKey。已在解密端对 openssl-nosalt 强制清空盐。
+
+### 验证
+- 端到端（DOM 桩 + 真实界面入口）：**39/39 通过**（容器 7、密钥模式 5、KDF 9、输出格式 11、模式 7，全部加密→取输出→解密→比对原文）。
+- IGE：与独立 Python 实现（cryptography 库 AES-ECB 手搭）交叉验证 **10/10**（5 种长度 × 加解密）。
+- 健康检查：脚本 **74/74** 加载、ALGOS **289 无重复**、说明超 200 字 **0**、OUT_FORMATS **23**。
+- Base85 往返 65/65（上一批的修复确认在 dist 中）。
+
+### 关于 IGE 的验证强度（如实说明）
+OpenSSL 3 的 `enc` 命令已不提供 ige（`openssl list -cipher-algorithms` 无此条目），无法与官方直接对拍。当前证据是「按定义实现 + 与独立 Python 实现一致 + 往返自洽」，界面说明里已明确标注这一点。
+
+---
+
+## 第六十五批：MTProto 2.0（Telegram 云聊天协议）
+
+新增 3 个条目（算法 289 → 292）：
+- `mtproto-enc` MTProto 2.0 消息加密（Telegram）
+- `mtproto-dec` MTProto 2.0 消息解密（Telegram）
+- `mtproto-kdf` MTProto 2.0 密钥派生（auth_key + msg_key → aes_key / aes_iv）
+
+### 规范来源（两份独立且一致）
+1. core.telegram.org/mtproto §Defining AES Key and Initialization Vector
+2. telethon 1.45.0 `telethon/network/mtprotostate.py::_calc_key`（生产级客户端库）
+
+### 最容易写错的一处：KDF 是两个 SHA-256，不是四个
+MTProto 2.0 只用：
+```
+sha256_a = SHA256(msg_key ‖ auth_key[x : x+36])
+sha256_b = SHA256(auth_key[x+40 : x+76] ‖ msg_key)
+aes_key  = a[0:8] ‖ b[8:24] ‖ a[24:32]
+aes_iv   = b[0:8] ‖ a[8:24] ‖ b[24:32]
+```
+而 a/b/c/d **四个**哈希是已废弃的 MTProto 1.0（SHA-1）写法。凭 telethon 之外的记忆
+写成四哈希版本会全错，且**自洽测试测不出来**（加解密两端对称），
+只有与官方/第三方实现对照才暴露。x = 0 客户端 / 8 服务端。
+
+其余要点：
+- msg_key = SHA256(auth_key[88+x : 120+x] ‖ payload ‖ padding)[8:24]
+  —— 2.0 的 padding **参与** msg_key 计算（1.0 不参与）
+- auth_key_id = SHA1(auth_key)[12:20] —— 这里仍是 **SHA-1**，不是 SHA-256
+- auth_key 低 1024 位（后 128 字节）不参与任何计算
+
+### 踩坑：auth_key_id 的 64 位精度丢失
+```
+// 错：BigInt → Number 超过 2^53 丢精度，首字节被抹成 0x00（正确值 0x41）
+var kid = le64(Number(rdU64(sha1(ak), 12)));
+// 对：小端低 64 位就是摘要的第 12..19 字节，直接切片，不做数值转换
+function authKeyId(ak) { return sha1(ak).subarray(12, 20); }
+```
+
+### 设计取舍：msg_key 校验失败时停止解析字段
+msg_key 校验失败说明 body 全是垃圾，msg_length 是一个随机数，
+继续解析必然抛「越界」，把真正的失败原因（方向或 auth_key 不对）掩盖掉。
+现在直接返回失败报告并提示「把方向 c/s 换一下再试」。
+副作用：方向填反也能得到明确诊断，而不是一句越界报错。
+
+### 验证
+- **telethon 本体**（pyaes 的 AES + telethon 自己的 IGE 与 _calc_key）交叉 24/24
+- **Python 独立参考**（hashlib + cryptography 库 AES-ECB + 按 telethon 语义手写的 IGE）6/6
+- 每组做 3 项检查：KDF 输出、完整报文逐字节、解密端 msg_key 校验 + data 还原 → **30/30**
+- 判别测试 2/2：方向 c/s 填反 → 校验失败 ✓；改一个字节 → 校验失败 ✓
+- 覆盖 x=0 与 x=8 双向、data 长度 0..1013、padding 12..1016
+
+### 健康检查（从 zip 解压目录独立复算）
+```
+脚本 75/75 加载   ALGOS 292 无重复   说明超 200 字 0
+MTProto 交叉 32/32
+```
+
+---
+
+## 第六十六批：MTProto 1.0 + auth_key_id（算法 292 → 296）
+
+在 `crypto_mtproto.js` 内新增 4 个条目：
+
+| 条目 | 说明 |
+|---|---|
+| `mtproto1-enc` | MTProto 1.0 消息加密（已废弃，仅兼容验证） |
+| `mtproto1-dec` | MTProto 1.0 消息解密 |
+| `mtproto1-kdf` | MTProto 1.0 密钥派生（四个 SHA-1） |
+| `mtproto-authkeyid` | auth_key_id / aux_hash 计算 |
+
+### ⚠ 1.0 与 2.0 的三处差异，凭直觉必错
+
+上一批已经踩过「凭记忆想起 a/b/c/d 四哈希其实是 1.0 的写法」。本批把它做成了 1.0 条目，
+并把差异逐条钉死：
+
+| 项 | MTProto 1.0 | MTProto 2.0 |
+|---|---|---|
+| msg_key | `SHA1(payload)[4:20]`，**不含 padding**、**不含 auth_key 片段** | `SHA256(auth_key[88+x:120+x]‖payload‖padding)[8:24]` |
+| padding | **0..15** 字节 | 12..1024 字节 |
+| KDF | **四个 SHA-1** | 两个 SHA-256 |
+
+官方（core.telegram.org/mtproto）原文佐证：
+> "In the older MTProto 1.0, the message key was computed as the lower 128 bits
+>  of SHA-1 of the message body, excluding the padding bytes"
+> "12..1024 padding bytes are used instead of 0..15 padding bytes in v.1.0"
+
+### 参照物：这次找到了真正的第三方 v1 实现
+
+telethon 1.45 早已移除 1.0 支持，所以第一批的「telethon 本体」参照物**对 1.0 无效**。
+本批改用 **telethon 0.15.5**（MTProto 1.0 时代的生产客户端）：
+
+```python
+# telethon 0.15.5  telethon/helpers.py
+def calc_key(shared_key, msg_key, client):
+    x = 0 if client else 8
+    sha1a = sha1(msg_key + shared_key[x:x + 32]).digest()
+    sha1b = sha1(shared_key[x + 32:x + 48] + msg_key + shared_key[x + 48:x + 64]).digest()
+    sha1c = sha1(shared_key[x + 64:x + 96] + msg_key).digest()
+    sha1d = sha1(msg_key + shared_key[x + 96:x + 128]).digest()
+    key = sha1a[0:8] + sha1b[8:20] + sha1c[4:16]
+    iv  = sha1a[8:20] + sha1b[0:8] + sha1c[16:20] + sha1d[0:8]
+    return key, iv
+
+def calc_msg_key(data):
+    return sha1(data).digest()[4:20]
+```
+
+参考实现**每次调用都与之硬断言**，不是跑通一次就算。另有两份外部源码交叉：
+gotd/td `crypto/kdf_v1.go`、ferogram_crypto(Rust) `lib.rs`。
+
+IGE 仍用 telethon 1.45 的 `AES.encrypt_ige/decrypt_ige`（pyaes，第三方）。
+auth_key_id 与 telethon 的 `AuthKey` 类交叉（`key_id = SHA1(auth_key)[12:20]`，
+`aux_hash = SHA1(auth_key)[0:8]`）。
+
+### 判别测试（防止两套协议写混）
+
+- 1.0 与 2.0 的 KDF 对同一 msg_key 输出**必须不同** ✓
+- 用 2.0 解密条目去解 1.0 报文**必须失败** ✓
+- 1.0 方向 c/s 填反 → msg_key 校验失败 ✓
+- 改一个字节 → msg_key 校验失败 ✓
+
+### 验证（从 zip 解压目录独立复算）
+```
+MTProto 1.0 / auth_key_id 官方向量  PASS 69  FAIL 0
+MTProto 2.0 回归              PASS 32  FAIL 0
+脚本 75/75 加载   ALGOS 296 唯一 296   说明超 200 字 0   BUILD_INFO 一致
+```
+52 组 v1 向量覆盖：x=0/x=8 双向、data 长度 0..1013、padding 长度 0..15 全部取值、
+12 组 auth_key_id。
+
+## 第六十七批：MTProto 全量独立复算（第 1 批收尾）
+
+> 算法数不变（296）。本批不新增条目，只做「第 1 批 MTProto」的**独立复算验收**与清理。
+
+### 一、为什么要单独跑一次
+
+第六十六批把 1.0 与 auth_key_id 加进来时，验证是在生成向量的同一轮里做的。
+本项目规矩：**改动与验证不在同一轮完成时，必须换一轮独立复算**，
+避免「参照物与实现一起错」的共谋失效。本批从 dist 走 ALGOS 界面入口重跑全部 7 个条目。
+
+### 二、复算结果：272 / 272
+
+| 项 | 组数 | 结果 |
+|---|---|---|
+| MTProto 1.0 KDF（auth_key+msg_key → aes_key‖aes_iv） | 52 | PASS |
+| MTProto 1.0 加密（完整报文逐字节） | 52 | PASS |
+| MTProto 1.0 解密（msg_key 校验 + data 还原） | 52 | PASS |
+| 判别：方向 c/s 填反 → 必须失败 | 1 | PASS |
+| 判别：篡改密文一字节 → 必须失败 | 1 | PASS |
+| auth_key_id + aux_hash | 12×2 | PASS |
+| MTProto 2.0（Python 参考向量）KDF+enc+dec | 6×3 | PASS |
+| MTProto 2.0（telethon 本体向量）KDF+enc+dec | 24×3 | PASS |
+
+### 三、又栽在解析器上（第 N 次「参照物错了」）
+
+第一遍跑 2.0 回归 **4/6 FAIL**，看着像 2.0 KDF 有方向性 bug。
+
+实际是：**两份向量的 `client` 字段格式不同**——
+
+```
+mt/mtproto_ref.txt       写 1 / 0
+mt/mtproto_telethon.txt  写 1 / 0
+mt/mtproto1_ref.txt      写 01 / 00
+```
+
+我的脚本按字符串 `=== '01'` 判断，2.0 的两份文件全部被判反（x 取成 8 而非 0），
+于是**全组方向相反**。改成 `parseInt(client, 16) !== 0` 后立刻全过。
+
+**这不是实现的错，是解析器的错。** 教训再次确认：
+期望值与字段格式一律解析确认，不凭对某一份文件的印象写死。
+
+### 四、清理的死代码
+
+`mtproto-enc` 的 `enc` 里留了一行实验期残留：
+
+```js
+var data = asHex ? hexToB(bToHex(inB(b)).length ? inB(b) : inB(b)) : inB(b);
+```
+
+三重嵌套、语义恒等于 `inB(b)`，且下一行 `if (asHex)` 立即重新赋值覆盖。
+不影响结果（否则 272 组不会全过），但会误导后续维护。已改为 `new Uint8Array(0)`，
+与紧随其后的 hex 分支保持一致。
+
+### 五、交付
+
+从 **zip 解压目录**独立复算：脚本 75/75、ALGOS 296 唯一 296、说明超 200 字 0、
+BUILD_INFO 一致、MTProto 272/272。

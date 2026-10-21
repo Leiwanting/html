@@ -21,7 +21,7 @@
   </svg>
   <span class="app-name">加密工具箱</span>
   <span class="app-sub">Aegis Crypto Toolbox</span>
-  <span class="ver-badge" id="verBadge" title="点击查看版本信息">v1.1.0 <b>Aegis</b><i class="ver-abbr">AGS</i></span>
+  <span class="ver-badge" id="verBadge" title="点击查看版本信息">v1.0.0 <b>Aegis</b><i class="ver-abbr">AGS</i></span>
 </header>
 
 <div class="wrap">
@@ -29,14 +29,14 @@
 
   <div class="ver-card hidden" id="verCard">
     <div class="ver-card-head">
-      <span class="ver-ver">v1.1.0</span>
+      <span class="ver-ver">v1.0.0</span>
       <span class="ver-code">Aegis</span>
       <span class="ver-abbr-big">AGS</span>
       <span class="ver-cn">埃癸斯 · 神盾</span>
     </div>
     <p class="ver-line">
       <b>Aegis（埃癸斯）</b>是希腊神话中宙斯与雅典娜所持的神盾，取其守护之意；缩写 <b>AGS</b>。
-      这个工具的两个坚持是：<b>321 个算法</b>全部经权威向量或参考实现交叉验证，
+      这个工具的两个坚持是：<b>149 个算法</b>全部经权威向量或参考实现交叉验证，
       以及<b>零外部依赖</b>——不引任何 CDN 或 npm 包，断网可用。
       <span class="ver-codenote">内部代号 ARGUS（阿格斯·百眼）见 CHANGELOG。</span>
     </p>
@@ -116,6 +116,7 @@
           <option value="SIV">SIV（确定性认证加密）</option>
           <option value="EAX">EAX（认证加密）</option>
           <option value="OCB">OCB（认证加密）</option>
+          <option value="GCMSIV">GCM-SIV（抗 nonce 误用，RFC 8452）</option>
           <option value="PCBC">PCBC（错误传播 CBC）</option>
           <option value="LRW">LRW（可调分组，XTS 前身）</option>
           <option value="CTS-CS1">CTS-CS1（密文窃取 NIST）</option>
@@ -351,6 +352,7 @@
 <script src="crypto_verkle.js"></script>
 <script src="algo_picker.js"></script>
 <script src="crypto_hqc.js"></script>
+<script src="crypto_bike.js"></script>
 <script src="crypto_wideblock.js"></script>
 <script src="crypto_encoding2.js"></script>
 <script src="crypto_ibe.js"></script>
@@ -377,6 +379,7 @@
 <script src="crypto_sntrup.js"></script>
 <script src="crypto_blake2p.js"></script>
 <script src="crypto_ascon.js"></script>
+<script src="crypto_aegis.js"></script>
 <script src="crypto_tiger.js"></script>
 <script src="crypto_skein.js"></script>
 <script src="crypto_kdf2.js"></script>

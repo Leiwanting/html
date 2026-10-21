@@ -522,14 +522,14 @@ function modeDec(cipher, bs, invFn, mode, padMode, iv, encFn) {
   if (mode === 'IGE') return igeDec(cipher, bs, invFn, padMode, iv);
   throw new Error('未知模式: ' + mode);
 }
-var AEAD_MODES = ['GCM', 'CCM', 'SIV', 'EAX', 'OCB'];
+var AEAD_MODES = ['GCM', 'CCM', 'SIV', 'EAX', 'OCB', 'GCMSIV'];
 var BLOCK_MODES = ['ECB', 'CBC', 'CFB', 'OFB', 'CTR', 'XTS'];
 var NO_PAD_MODES = ['CFB', 'OFB', 'CTR', 'XTS', 'CFB8', 'CFB1', 'LRW', 'CTS-CS1', 'CTS-CS2', 'CTS-CS3'];
 /* 需要 IV/tweak 的模式 */
 function isAEAD(mode) { return AEAD_MODES.indexOf(mode) >= 0; }
 function isCTS(mode) { return mode === 'CTS-CS1' || mode === 'CTS-CS2' || mode === 'CTS-CS3'; }
 function modeUsesPadding(mode) { return NO_PAD_MODES.indexOf(mode) < 0 && !isAEAD(mode); }
-/* AEAD 的 nonce 长度：GCM 12、CCM 13、SIV 0（确定性，无 nonce） */
+/* AEAD 的 nonce 长度：GCM 12、CCM 13、GCMSIV 12、SIV 0（确定性，无 nonce） */
 /* CCM 的标签长度只能是偶数 4..16（RFC 3610）；写别的值会得到"能加密但别的库解不开"的密文。 */
 function ccmTagLen(t) {
   var v = (t === undefined || t === null || isNaN(t)) ? 16 : parseInt(t, 10);
@@ -540,6 +540,7 @@ function ccmTagLen(t) {
 function aeadNonceLen(mode) {
 if (mode === 'GCM') return 12;
 if (mode === 'CCM') return 13;
+if (mode === 'GCMSIV') return 12;
 if (mode === 'EAX') return 16;
 if (mode === 'OCB') return 12;
 return 0;
@@ -1898,6 +1899,18 @@ async function symEncryptInner(algo, bytes, key, mode, padMode, ivHex, embedIV, 
       if (typeof nonceRemember === 'function') nonceRemember('OCB', keyBytes, no);
       return { ciphertext: concatBytes(concatBytes(no, oo.ciphertext), oo.tag), iv: no, ivProvided: ivProvided, salt: saltUsed };
     }
+    if (mode === 'GCMSIV') {
+      /* AES-GCM-SIV（RFC 8452）：抗 nonce 误用。nonce 复用时只泄露「两段明文是否相同」，
+         不像 GCM 那样泄露明文异或，所以这里不做 nonceGuard 拦截（拦了反而误导）。 */
+      if (keyBytes.length !== 16 && keyBytes.length !== 32)
+        throw new Error('GCM-SIV 只支持 AES-128 / AES-256（16 或 32 字节密钥），当前密钥 ' + keyBytes.length + ' 字节');
+      var nLenG = aeadNonceLen('GCMSIV');
+      var ng2 = ivHex ? hexToBytes(ivHex) : crypto.getRandomValues(new Uint8Array(nLenG));
+      if (ng2.length !== nLenG) throw new Error('GCM-SIV 的 nonce 必须为 12 字节（24 位 Hex）');
+      if (ivHex) ivProvided = true;
+      var gs = sivCrypt(keyBytes, ng2, bytes, aad, true);
+      return { ciphertext: concatBytes(ng2, gs), iv: ng2, ivProvided: ivProvided, salt: saltUsed };
+    }
     /* SIV：确定性 AEAD，不需要 nonce，抗 nonce 误用 */
     var sivKey = await deriveKeyBytes(key, algo.keyLen * 2);
     var sv = aesSivEncrypt(bytes, sivKey, aad.length ? [aad] : []);
@@ -2007,6 +2020,12 @@ async function symDecryptInner(algo, cipher, key, mode, padMode, ivHex, aadStr, 
       var nlO = aeadNonceLen('OCB');
       if (cipher.length < nlO + 16) throw new Error('OCB 密文长度不足（需 nonce + 密文 + 16 字节标签）');
       return aesOcbDecrypt(cipher.subarray(nlO, cipher.length - 16), cipher.subarray(cipher.length - 16), keyBytes, cipher.subarray(0, nlO), aad2);
+    }
+    if (mode === 'GCMSIV') {
+      var nlG = aeadNonceLen('GCMSIV');
+      if (cipher.length < nlG + 16) throw new Error('GCM-SIV 密文长度不足（需 nonce + 密文 + 16 字节标签）');
+      /* sivCrypt 解密侧的输入是「密文‖tag」整体，内部自己拆末 16 字节校验 */
+      return sivCrypt(keyBytes, cipher.subarray(0, nlG), cipher.subarray(nlG), aad2, false);
     }
     var sivKey2 = await deriveKeyBytes(key, algo.keyLen * 2);
     if (cipher.length < 16) throw new Error('SIV 密文长度不足（需 16 字节 V + 密文）');
@@ -2648,7 +2667,8 @@ function updateModePadUI() {
   if (els.aadField) els.aadField.classList.toggle('hidden', !(isAEAD(mode) || _etmOn));
   /* nonce 复用检测只对 GCM/CCM 有意义（SIV 抗误用、其它模式无 nonce 语义） */
   if (els.nonceGuardField) els.nonceGuardField.classList.toggle('hidden', !(mode === 'GCM' || mode === 'CCM' || mode === 'EAX' || mode === 'OCB'));
-  if (els.tagLenField) els.tagLenField.classList.toggle('hidden', !isAEAD(mode));
+  /* GCM-SIV / SIV 的标签长度是固定的（16 字节），给它们显示 tagLen 下拉会误导 */
+  if (els.tagLenField) els.tagLenField.classList.toggle('hidden', !isAEAD(mode) || mode === 'GCMSIV' || mode === 'SIV');
   var needPad = modeUsesPadding(mode) && !isAEAD(mode);
   if (els.ivField) els.ivField.classList.toggle('hidden', !needIV);
   if (els.padField) {
@@ -2660,7 +2680,7 @@ function updateModePadUI() {
   var ivLabel = document.querySelector('label[for="iv"]');
   if (ivLabel) {
     if (mode === 'XTS') ivLabel.textContent = 'Tweak（留空则自动生成并回写）';
-    else if (mode === 'GCM' || mode === 'CCM') ivLabel.textContent = 'Nonce（留空则自动生成并回写）';
+    else if (mode === 'GCM' || mode === 'CCM' || mode === 'GCMSIV') ivLabel.textContent = 'Nonce（留空则自动生成并回写）';
     else ivLabel.textContent = 'IV（留空则自动生成并回写）';
   }
 }

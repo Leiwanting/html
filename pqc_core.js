@@ -18,7 +18,10 @@ function mlkemP(k) {
   throw new Error('ML-KEM 只支持 512 / 768 / 1024');
 }
 function sha3Hash(bits, input, outLen) {
-  var rate = bits === 512 ? 72 : 136;
+  // rate = 200 - 2*容量字节 = 200 - bits/4
+  //   224→144   256→136   384→104   512→72
+  // 旧写法只区分 512/非512，384 会错用 136（=SHA3-256 的 rate），结果完全不是 SHA3-384
+  var rate = 200 - bits / 4;
   var A = kecStateNew();
   keccakAbsorb(A, input, rate, 0x06);
   return keccakStateToBytes(A, rate / 8).subarray(0, outLen);

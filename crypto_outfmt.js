@@ -81,11 +81,14 @@ function outPyLiteral(b) { return 'b"' + Array.from(b).map(function (x) { return
 function outGoLiteral(b) { return '[]byte{0x' + Array.from(b).map(function (x) { return (x < 16 ? '0' : '') + x.toString(16); }).join(', 0x') + '}'; }
 function outRustLiteral(b) { return '[' + Array.from(b).map(function (x) { return '0x' + (x < 16 ? '0' : '') + x.toString(16); }).join(', ') + ']'; }
 
-/* AES-GCM-SIV / HCTR2 共用 POLYVAL，但 POLYVAL 的位循环（GHASH 之外的
-   第三种 GF(2^128) 约定）未能与 cryptography 的 AESGCMSIV 对上：
-   从官方 tag 反推出的 S 值与本实现的 POLYVAL 输出均不一致，
-   三种 H 构造（AES(K,0^128)、AES(K,nonce||0)、消息认证密钥再派生）都试过。
-   按「不能出错」的要求，未通过验证前不注册这两个模式，代码暂不交付。 */
+/* 【这段注释已过时，保留说明以免重蹈】早期版本的 POLYVAL 位循环（GF(2^128) 的
+   第三种约定，与 GHASH 不同）未能与 cryptography 的 AESGCMSIV 对上，当时据此
+   判定「未通过验证前不注册」。
+   后来在 crypto_aead_adv.js 里修好了 POLYVAL，关键点是 SIV 的构造为【先解密、
+   后验签】——POLYVAL 作用在【明文】上而非密文（早期对密文做 POLYVAL，非空明文
+   全部认证失败，只有空明文因两边皆空而碰巧通过）。
+   现状：aes-gcm-siv 已注册，与 cryptography 的 AESGCMSIV 交叉验证 24/24（本批
+   追加 5/5 复算），并已接入「加密模式」下拉（nonce 12 字节，输出 nonce‖密文‖tag）。 */
 
 /* 输出格式在运行时合并进 OUT_FORMATS：crypto_core.js 的 OUT_FORMATS 定义
    在加载时就被 initFmtSelect 遍历，若把新格式写进 core 会引用到尚未定义的函数。

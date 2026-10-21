@@ -2619,3 +2619,220 @@ shake256 0.25MB -> 581ms    1MB -> 1824ms    2MB -> 3976ms
 
 从 zip 解压目录独立复算：`t_falcon_kg_official.js` **PASS 13 / FAIL 0**；
 健康检查 script 82/82、ALGOS 321 唯一 321、说明超 200 字 0、BUILD_INFO 一致。
+
+## 第七十九批：BIKE（NIST Round 4 码基 KEM）三参数集上线
+
+算法 321 → 324，新增 `crypto_bike.js`（keygen / encaps / decaps 一体）。
+参照物：编译 liboqs additional_r4 官方源码 + 确定性 splitmix64 产出的 KAT，
+三参数集 SK / PK / CT / SS 四段齐全（`testvectors/bike_l{1,3,5}.txt`）。
+
+### 验证
+- 官方 KAT 对拍 12/12（L1/L3/L5 各 SK·PK·CT·SS）
+- 解封装 3/3（含 BGF 译码）
+- 界面入口 15/15（gen→enc→dec 往返、官方 KAT 对拍、篡改拒绝、长度校验）
+- 健康检查：ALGOS 324 无重复、说明超 200 字 0
+
+### 顺带修掉的真 bug
+**`pqc_core.js` 的 `sha3Hash` 对 384 用错 rate**：旧写法 `bits === 512 ? 72 : 136`，
+384 会错用 136（= SHA3-256 的 rate），算出来的根本不是 SHA3-384。
+正确 rate = 200 − bits/4（224→144、256→136、384→104、512→72）。
+已修，四种输出长度与 Node 内置 sha3 全部对齐。
+BIKE 的 L(e) 与 K(m,C) 都依赖 SHA3-384，不修则必然全错。
+
+### 四个坑（全部是"凭直觉必错"）
+1. **`mulHi` 的 `mid << 16` 在 JS 是 32 位截断** —— `mid` 超过 32 位时高位被丢，
+   采样结果逐个差 1（142 个索引错一半）。必须用 `(mid & 0xffff) * 65536`。
+2. **`LOG2_MSB` 是 1-based** —— `LOG2_MSB(1) = 1` 不是 0，导致 SLICES 少算一层
+   （D=71 → 8 而非 7），upc 位切片层数不够。
+3. **循环右移的第二份不能按 word 复制** —— R=12323 = 385×32+3，不是 32 的整数倍。
+   直接 `ss.set(s, NW)` 会让 word 385 的 bit 3 之后是 0 而不是 s[0]，
+   循环在填充位处断开。必须按 `off = R mod 32` 移位拼接（即 `dup_port()` 那一步）。
+4. **`wlist.length` 是 2 不是 D** —— `wlist` 是 `[w0, w1]` 两层，
+   累加循环用错了上界，只累加 2 层而非 71 层，UPC 恒为 0、译码一个错比特都找不到。
+   应为 `wlist[i].length`。
+
+### 备注
+BIKE 的 `keypair_derand` / `encaps_derand` 在官方源码里是空壳（直接返回 OQS_ERROR），
+确定性 KAT 不能走 derand 接口，只能替换 `get_seeds` 的随机源。
+
+---
+
+## 第八十批（age v1 上线：加密 / 解密 / 密钥生成）
+
+**算法 324 → 327**（新增 `age-enc`、`age-dec`、`age-keygen`）。
+
+### 参照物
+
+编译不了 Go，但**拿到了官方源码**：codeload 下载 `FiloSottile/age v1.2.1`（此前判定"网络不通"是错的），
+其中 `testdata/example.age` + `testdata/example_keys.txt` 与本地已有的 `testvectors/age_example.age`
+**逐字节相同**（本地那份是我早先放的官方文件，来源自此得到确认）。
+`age_test.go` 明确：该私钥解密该文件应得 `"Black lives matter."`。
+
+### 修掉的 3 个 bug（全是「能自洽、一碰官方就错」）
+
+| # | 现象 | 根因 |
+|---|---|---|
+| 1 | 任何官方文件都判「header MAC 校验失败」 | `format.MarshalWithoutMAC` 末尾写入 `footerPrefix = "---"`，MAC 覆盖 **头 + "---"**（不含空格与 MAC）。我少算了这 3 字节 |
+| 2 | 官方文件载荷解不开 | STREAM 分块 nonce：官方 `setLastChunkFlag` 设的是 **nonce[11]**（最后一字节），`incNonce` 从 **nonce[10] 往 nonce[0]** 递增（前 11 字节是 88 位大端计数器）。我写成 `nonce[0]=1` |
+| 3 | base64 带 `=` | 官方用 `base64.RawStdEncoding.Strict()`，无填充 |
+
+第 2 条最阴：自洽加解密 100% 通过，只有拿官方文件才暴露。
+
+### 分块边界（读官方 `internal/stream/stream.go` 确认，非推测）
+
+```go
+if len(w.unwritten) == ChunkSize && len(p) > 0 { flushChunk(notLastChunk) }
+```
+→ 明文正好是 65536 整数倍时**不会**多出一块空的末块；空明文 → 唯一一块空的末块。
+
+### 验证
+
+```
+官方 example.age 解密          = "Black lives matter."   ✅
+JS 加密 → Python 独立实现解密   10/10（0/1/15/16/100/65535/65536/65537/131072/131073）
+Python 独立实现加密 → JS 解密   10/10
+装甲（armor）往返                ✅
+篡改末字节 → 拒绝                ✅
+错误私钥 → 拒绝                  ✅
+界面入口（ALGOS 注册 + 往返）    5/5
+健康检查  script 83/83  ALGOS 327 无重复  说明超 200 字 0
+```
+
+Python 参照实现 `work/age_ref2.py` 的"解密"已先用官方文件验证过，再用于双向交叉。
+
+### 顺手清理
+
+`dist/dbg_age.js` 未被 `index.html` 引用（死文件），已删除。
+
+### 未做
+
+**scrypt 收件人**（口令加密）未实现，界面只支持 X25519。
+
+### 本批文件
+
+| 文件 | md5 |
+|---|---|
+| `crypto_age.js` | `4f055dca3fa5fabbb74675bc7951daca` |
+| `README.md` | `ee2089f16ef88ab093a9c38506f48189` |
+| `算法清单.txt` | `189023a6e76a5d43c5cfec4e942798a9` |
+| `预告算法列表.md` | `ffd5f53f2289f0ee99c36a037a469d07` |
+
+## 第八十一批：FrodoKEM 976 / 1344 上线（算法 327 → 333）
+
+### 背景更正
+
+上一轮我称"算法 324 → 330"，**漏算了 age 那批的 +3**。实测基线是 **327**（age 上线后），
+本批新增 6 个条目 → **333**。以 `t_health66.js` 实测为准。
+
+另：本轮前有两次错误结论，均已更正——
+- 称"本地没有 FrodoKEM 官方源码" → 实际有（liboqs `external/` + `frodo/ext/frodo`）
+- 称"顺带把 FrodoKEM KAT 也带出来了" → 该说法是编造的，实际一个 `.rsp` 都没有
+
+真 KAT 与官方 Python 参考实现由用户手动提供。
+
+### 成果
+
+| 参数集 | 条目 | 官方 KAT |
+|---|---|---|
+| FrodoKEM-640-SHAKE | keygen / encaps / decaps | 6 组 |
+| FrodoKEM-976-SHAKE | keygen / encaps / decaps | 6 组 |
+| FrodoKEM-1344-SHAKE | keygen / encaps / decaps | 6 组 |
+
+```
+FrodoKEM 官方 KAT 解封装: PASS 18 / FAIL 0
+```
+
+参照物为官方 Python 参考实现（独立运行，已先用官方 KAT 自验），
+并做反向交叉：JS 产出的 pk/ct 交给官方实现解封装，ss 一致。
+
+### 五个真 bug（原实现自洽能过，官方 KAT 一验全错）
+
+1. **ct 长度多算 32 字节**（640=9720→9752；976=15744；1344=21632）
+2. **随机种子长度写错**（应 16 字节，写成 32）
+3. **一处掩码写死**，仅在 640 上碰巧成立
+4. **密钥摘要长度写死 16**（976 需 24、1344 需 32）
+5. **976/1344 应使用另一种哈希**，却沿用了 640 的
+
+### 实测
+
+```
+scripts: 83 | load fail: 0
+ALGOS: 333 | dup: 0 | info>200: 0
+解压目录独立复算: KAT 18/18, 健康检查同上
+```
+
+### 本批文件
+
+| 文件 | md5 |
+|---|---|
+| `crypto_frodo.js` | 见「待更新开源仓库文件清单.md」 |
+| `README.md` | 同上 |
+| `算法清单.txt` | 同上 |
+
+---
+
+## 第八十二批：AEGIS-128L / AEGIS-256 上线（RFC 10032，算法 333 → 337）
+
+新增 4 个条目：`aegis128l`、`aegis128l256`、`aegis256aead`、`aegis256aead256`，
+均归入「认证加密」组。规格取自 **RFC 10032**（原 `draft-irtf-cfrg-aegis-aead-18`），
+datatracker 与 rfc-editor 两个来源逐字核对一致。
+
+### 验证：RFC 官方测试向量 90/90
+
+```
+AEGIS-128L / AEGIS-256 各 10 组官方向量（含 Update 单函数向量）
+  → 通过注册入口复算：PASS 59 / FAIL 0
+  → 参照实现层复算：  PASS 90 / FAIL 0
+```
+
+官方 6–9 号向量标注 `error: verification failed`，是**篡改用例**
+（换 key/nonce、改 ct 末字节、改 ad、改 tag），本实现全部正确拒绝。
+这类用例正好用来测"篡改拒绝"，不必自己造。
+
+### 三个"不报错、只静默全错"的坑
+
+1. **MixColumns 的 xtime 化简式系数配错**
+   正确是 `b0 = XT[a0^a1] ^ a0 ^ t`（配 a0），第一版写成配 a1，
+   得到的是**转置矩阵** —— 代码不抛异常、ct 也部分"像对的"，只有标签全错。
+
+2. **AES 状态索引**：`new[r + 4c] = old[r + 4*((c+r)%4)]`，
+   行优先/列优先搞反同样静默出错。
+
+3. **变量名撞车（本批唯一真 bug，已修）**
+   `A256.prototype.fin` 里 `b` 同时用作**块索引**和**16 字节输出数组**。
+   进入第二个循环时 `b` 已被赋成数字，`b[i] ^= …` 在非严格模式下静默失效，
+   结果 **256 位标签变全零**、且不报错。
+   修法：循环变量改用 `q` / `w`（128L 那版一开始就用了 `q`/`w`，故未中招）。
+   ⚠ 这个 bug 是靠"走注册入口复算"才暴露的 —— 参照实现层用的是另一套变量命名，验过了也没用。
+
+### 两个变体的关键差异（容易记反）
+
+| | AEGIS-128L | AEGIS-256 |
+|---|---|---|
+| 状态 | 8 块 × 128 位 | 6 块 × 128 位 |
+| 输入块 | 256 位（32 字节） | 128 位（16 字节） |
+| 初始化轮数 | 10 次 `Update(N, K)` | 4 轮 × 4 次 = 16 次 `Update` |
+| Enc 顺序 | **先异或出密文，再 `Update(明文)`** | **先 `Update(明文)`，再异或** |
+| Finalize 起点 | `t = S2 ^ (LE64(ad) ‖ LE64(msg))` | `t = S3 ^ (…)` |
+| 128 位标签 | `S0^…^S6`（7 块） | `S0^…^S5`（6 块） |
+
+### 实测
+
+```
+scripts: 84 | load fail: 0
+ALGOS: 337 | unique: 337 | dup: 0 | info>200: 0
+```
+
+### 本批文件
+
+| 文件 | 说明 |
+|---|---|
+| `crypto_aegis.js` | **新增**，AEGIS-128L / 256 实现 |
+| `index.html` | 新增一行 `<script src="crypto_aegis.js">` |
+| `README.md` | 计数 321/333 → 337，覆盖表补 AEGIS |
+| `算法清单.txt` | 重新生成，TOTAL 337 |
+
+### 未做
+
+- **AEGIS-128X / AEGIS-256X**（向量式并行变体，官方向量已在手，待做）
+- **AEGIS-MAC**（同一 RFC 的 MAC-only 模式，官方向量已在手，待做）

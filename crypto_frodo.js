@@ -8,18 +8,21 @@
      ext/frodo_macrify_optimized.c          mul_bs / mul_add_sb_plus_e / add / sub / key_encode / key_decode
    参考源码已随包保存在 work/ref/frodo/（含可复现的确定性随机数）。
    规格: https://frodokem.org                                                   */
-(function () {
+function makeFrodo(P) {
   'use strict';
-  var N = 640, NBAR = 8, LOGQ = 15, EXTRACTED_BITS = 2;
-  var MASKQ = (1 << LOGQ) - 1;                       // 32767
-  var BYTES_SEED_A = 16, BYTES_MU = 16, BYTES_SALT = 32;
-  var BYTES_SEED_SE = 32, BYTES_PKHASH = 16, SS_BYTES = 16;
-  var PK_BYTES = 9616, SK_BYTES = 19888, CT_BYTES = 9752;
-  var B_BYTES = (LOGQ * N * NBAR) / 8;               // 9600
-  var C2_BYTES = (LOGQ * NBAR * NBAR) / 8;           // 120
-
-  /* CDF 表（取自 frodo640shake_params.h 原文） */
-  var CDF = [4643, 13363, 20579, 25843, 29227, 31145, 32103, 32525, 32689, 32745, 32762, 32766, 32767];
+  /* 参数取自 frodokem.org 官方 Python 参考实现 frodokem.py 的 setParamsFrodo*()。
+     CDF 由 error_distribution 经 cdf_zero_centred_symmetric 换算，与官方 T_chi 一致。 */
+  var N = P.N, NBAR = P.NBAR, LOGQ = P.LOGQ, EXTRACTED_BITS = P.EB;
+  var MASKQ = (1 << LOGQ) - 1;
+  /* len_pkh 随参数集变化（640:16 / 976:24 / 1344:32 bytes，即 len_ss 同宽）。
+     旧代码写死 16，只有 640 碰巧正确。len_seedA 则恒为 128 bits。 */
+  var BYTES_SEED_A = 16, BYTES_PKHASH = P.SS;
+  var SS_BYTES = P.SS, BYTES_MU = P.SS, BYTES_SEED_SE = P.SS;
+  var PK_BYTES = P.PK, SK_BYTES = P.SK, CT_BYTES = P.CT;
+  var B_BYTES = (LOGQ * N * NBAR) / 8;
+  var C2_BYTES = (LOGQ * NBAR * NBAR) / 8;
+  var CDF = P.CDF;
+  var XOF = P.XOF === 'shake256' ? shake256 : shake128;
 
   /* ---------- Keccak-f[1600] + SHAKE128（rate 168） ---------- */
   var M64 = 0xFFFFFFFFFFFFFFFFn;
@@ -51,9 +54,13 @@
       A[0] ^= RCk[rnd];
     }
   }
-  /* FIPS 202 的 SHAKE：域分隔 0x1F，rate 168 */
-  function shake128(input, outLen) {
-    var rate = 168, A = new Array(25), i, j, lane, off;
+  /* FIPS 202 的 SHAKE：域分隔 0x1F。SHAKE128 rate=168，SHAKE256 rate=136。
+     FrodoKEM-640 全程用 SHAKE128；976 / 1344 除 A 矩阵生成（恒 SHAKE128）外
+     一律用 SHAKE256 —— 官方 frodokem.py 的 self.shake 绑定即为如此。 */
+  function shake128(input, outLen) { return xof(input, outLen, 168); }
+  function shake256(input, outLen) { return xof(input, outLen, 136); }
+  function xof(input, outLen, rate) {
+    var A = new Array(25), i, j, lane, off;
     for (i = 0; i < 25; i++) A[i] = 0n;
     var n = input.length;
     var padLen = rate - (n % rate);
@@ -211,26 +218,38 @@
   function frodoSub(out, a, b) {
     for (var i = 0; i < NBAR * NBAR; i++) out[i] = (a[i] - b[i]) & MASKQ;
   }
+  /* Frodo.Encode / Frodo.Decode（规范 Algorithm 1 / 2）。
+     旧实现把 2-bit 掩码写死成 & 3，只在 EXTRACTED_BITS=2 的 640 上成立，
+     976(B=3) 与 1344(B=4) 会丢高位——现按官方 frodokem.py 重写为通用版。 */
   function keyEncode(out, innBytes) {
-    var nwords = (NBAR * NBAR) / 8, pos = 0, i, j;
-    for (i = 0; i < nwords; i++) {
-      var temp = innBytes[i * EXTRACTED_BITS] | (innBytes[i * EXTRACTED_BITS + 1] << 8);
-      for (j = 0; j < 8; j++) {
-        out[pos++] = ((temp & 3) << (LOGQ - EXTRACTED_BITS)) & 0xFFFF;
-        temp >>= EXTRACTED_BITS;
+    var B = EXTRACTED_BITS, n = NBAR * NBAR, idx, l, p, tmp;
+    for (idx = 0; idx < n; idx++) {
+      tmp = 0;
+      for (l = 0; l < B; l++) {
+        p = idx * B + l;
+        tmp |= (((innBytes[p >> 3] >> (p & 7)) & 1) << l);
       }
+      out[idx] = (tmp * (1 << (LOGQ - B))) & MASKQ;
     }
   }
+  /* round() 需与 Python 一致：四舍六入五取偶（banker's），不是 Math.round 的四舍五入 */
+  function roundHalfEven(num, den) {
+    var fl = Math.floor(num / den), rem = num - fl * den;
+    if (rem * 2 > den) return fl + 1;
+    if (rem * 2 < den) return fl;
+    return (fl % 2 === 0) ? fl : fl + 1;
+  }
   function keyDecode(outBytes, inn) {
-    var nwords = (NBAR * NBAR) / 8, index = 0, i, j;
-    for (i = 0; i < nwords; i++) {
-      var templong = 0;
-      for (j = 0; j < 8; j++) {
-        var temp = ((inn[index] & MASKQ) + (1 << (LOGQ - EXTRACTED_BITS - 1))) >> (LOGQ - EXTRACTED_BITS);
-        templong |= (temp & 3) * Math.pow(2, EXTRACTED_BITS * j);
-        index++;
-      }
-      for (j = 0; j < EXTRACTED_BITS; j++) outBytes[i * EXTRACTED_BITS + j] = (templong >>> (8 * j)) & 0xFF;
+    var B = EXTRACTED_BITS, n = NBAR * NBAR, q = 1 << LOGQ, idx, l, tmp;
+    var bits = new Uint8Array(n * B);
+    for (idx = 0; idx < n; idx++) {
+      tmp = roundHalfEven((inn[idx] & MASKQ) * (1 << B), q) % (1 << B);
+      for (l = 0; l < B; l++) bits[idx * B + l] = (tmp >> l) & 1;
+    }
+    for (idx = 0; idx < outBytes.length; idx++) {
+      var v = 0;
+      for (l = 0; l < 8; l++) v |= (bits[8 * idx + l] << l);
+      outBytes[idx] = v & 0xFF;
     }
   }
 
@@ -242,12 +261,12 @@
     var r = rnd(SS_BYTES + BYTES_SEED_SE + BYTES_SEED_A);
     var s = r.subarray(0, SS_BYTES), seedSE = r.subarray(SS_BYTES, SS_BYTES + BYTES_SEED_SE);
     var z = r.subarray(SS_BYTES + BYTES_SEED_SE);
-    var seedA = shake128(z, BYTES_SEED_A);
+    var seedA = XOF(z, BYTES_SEED_A);
     pk.set(seedA, 0);
 
     var shakeIn = new Uint8Array(1 + BYTES_SEED_SE);
     shakeIn[0] = 0x5F; shakeIn.set(seedSE, 1);
-    var raw = shake128(shakeIn, 2 * N * NBAR * 2);
+    var raw = XOF(shakeIn, 2 * N * NBAR * 2);
     for (var i = 0; i < 2 * N * NBAR; i++) Sbuf[i] = raw[2 * i] | (raw[2 * i + 1] << 8);
     var E = Sbuf.subarray(N * NBAR);
     sampleN(Sbuf, N * NBAR);
@@ -262,7 +281,7 @@
     var rawS = new Uint8Array(2 * N * NBAR);
     for (i = 0; i < N * NBAR; i++) { rawS[2 * i] = Sbuf[i] & 0xFF; rawS[2 * i + 1] = (Sbuf[i] >> 8) & 0xFF; }
     sk.set(rawS, SS_BYTES + PK_BYTES);
-    var pkh = shake128(pk, BYTES_PKHASH);
+    var pkh = XOF(pk, BYTES_PKHASH);
     sk.set(pkh, SS_BYTES + PK_BYTES + 2 * N * NBAR);
     return { pk: pk, sk: sk };
   }
@@ -275,18 +294,17 @@
     var Bp = new Uint16Array(N * NBAR), Sp = new Uint16Array((2 * N + NBAR) * NBAR);
     var Ep = Sp.subarray(N * NBAR), Epp = Sp.subarray(2 * N * NBAR);
 
-    var pkh = shake128(pk, BYTES_PKHASH);
-    var G2in = new Uint8Array(BYTES_PKHASH + BYTES_MU + BYTES_SALT);
+    var pkh = XOF(pk, BYTES_PKHASH);
+    var G2in = new Uint8Array(BYTES_PKHASH + BYTES_MU);
     G2in.set(pkh, 0);
-    var ms = rnd(BYTES_MU + BYTES_SALT);
+    var ms = rnd(BYTES_MU);
     G2in.set(ms, BYTES_PKHASH);
-    var salt = G2in.subarray(BYTES_PKHASH + BYTES_MU);
-    var G2out = shake128(G2in, BYTES_SEED_SE + SS_BYTES);
+    var G2out = XOF(G2in, BYTES_SEED_SE + SS_BYTES);
     var seedSE = G2out.subarray(0, BYTES_SEED_SE), k = G2out.subarray(BYTES_SEED_SE);
 
     var shakeIn = new Uint8Array(1 + BYTES_SEED_SE);
     shakeIn[0] = 0x96; shakeIn.set(seedSE, 1);
-    var raw = shake128(shakeIn, (2 * N + NBAR) * NBAR * 2);
+    var raw = XOF(shakeIn, (2 * N + NBAR) * NBAR * 2);
     for (var i = 0; i < (2 * N + NBAR) * NBAR; i++) Sp[i] = raw[2 * i] | (raw[2 * i + 1] << 8);
     sampleN(Sp, N * NBAR);
     sampleN(Ep, N * NBAR);
@@ -302,10 +320,9 @@
     frodoAdd(C, V, C);
     frodoPack(ct.subarray(B_BYTES, B_BYTES + C2_BYTES), C, NBAR * NBAR, LOGQ);
 
-    ct.set(salt, CT_BYTES - BYTES_SALT);
     var Fin = new Uint8Array(CT_BYTES + SS_BYTES);
     Fin.set(ct, 0); Fin.set(k, CT_BYTES);
-    return { ct: ct, ss: shake128(Fin, SS_BYTES) };
+    return { ct: ct, ss: XOF(Fin, SS_BYTES) };
   }
 
   function decaps(ct, sk) {
@@ -319,7 +336,6 @@
     var skPkh = sk.subarray(SS_BYTES + PK_BYTES + 2 * N * NBAR);
     var skPk = sk.subarray(SS_BYTES, SS_BYTES + PK_BYTES);
     var seedA = skPk.subarray(0, BYTES_SEED_A), pkB = skPk.subarray(BYTES_SEED_A);
-    var salt = ct.subarray(CT_BYTES - BYTES_SALT);
     var S = new Uint16Array(N * NBAR), i;
     for (i = 0; i < N * NBAR; i++) S[i] = skS[2 * i] | (skS[2 * i + 1] << 8);
 
@@ -330,14 +346,14 @@
     var muprime = new Uint8Array(BYTES_MU);
     keyDecode(muprime, W);
 
-    var G2in = new Uint8Array(BYTES_PKHASH + BYTES_MU + BYTES_SALT);
-    G2in.set(skPkh, 0); G2in.set(muprime, BYTES_PKHASH); G2in.set(salt, BYTES_PKHASH + BYTES_MU);
-    var G2out = shake128(G2in, BYTES_SEED_SE + SS_BYTES);
+    var G2in = new Uint8Array(BYTES_PKHASH + BYTES_MU);
+    G2in.set(skPkh, 0); G2in.set(muprime, BYTES_PKHASH);
+    var G2out = XOF(G2in, BYTES_SEED_SE + SS_BYTES);
     var seedSEp = G2out.subarray(0, BYTES_SEED_SE), kprime = G2out.subarray(BYTES_SEED_SE);
 
     var shakeIn = new Uint8Array(1 + BYTES_SEED_SE);
     shakeIn[0] = 0x96; shakeIn.set(seedSEp, 1);
-    var raw = shake128(shakeIn, (2 * N + NBAR) * NBAR * 2);
+    var raw = XOF(shakeIn, (2 * N + NBAR) * NBAR * 2);
     for (i = 0; i < (2 * N + NBAR) * NBAR; i++) Sp[i] = raw[2 * i] | (raw[2 * i + 1] << 8);
     sampleN(Sp, N * NBAR);
     sampleN(Ep, N * NBAR);
@@ -354,13 +370,13 @@
     var Fin = new Uint8Array(CT_BYTES + SS_BYTES);
     Fin.set(ct, 0);
     Fin.set(ctSelect(kprime, sk.subarray(0, SS_BYTES), SS_BYTES, selector), CT_BYTES);
-    return shake128(Fin, SS_BYTES);
+    return XOF(Fin, SS_BYTES);
   }
 
   var API = { shake128: shake128, keypair: keypair, encaps: encaps, decaps: decaps,
     PK_BYTES: PK_BYTES, SK_BYTES: SK_BYTES, CT_BYTES: CT_BYTES, SS_BYTES: SS_BYTES };
-  if (typeof window !== 'undefined') window.FrodoKEM = API;
-  if (typeof globalThis !== 'undefined') globalThis.FrodoKEM = API;
+  if (typeof window !== 'undefined') { window['FrodoKEM_' + P.ID] = API; window.FrodoKEM = API; }
+  if (typeof globalThis !== 'undefined') { globalThis['FrodoKEM_' + P.ID] = API; globalThis.FrodoKEM = API; }
 
   /* rndBytes 是 crypto_core.js IIFE 内的局部函数，跨文件取不到（本项目第 4 次遇到：
      sm2ZA / bigToBytes / bigToHex 之后又一个）。这里写本地版本。 */
@@ -374,31 +390,26 @@
 
   /* ---------- 注册 ---------- */
   if (typeof reg === 'function') {
-    var INFO = 'FrodoKEM-640-SHAKE：基于（普通）LWE 的格基 KEM，非结构化格，安全性归约到 LWE 困难性。' +
-      '已列入 ISO/IEC 18033-2:2006/Amd 2，也是德国 BSI 与欧盟 ENISA 推荐的 Level 1 后量子算法之一。' +
-      '公钥 9616 字节、私钥 19888 字节、密文 9752 字节、共享密钥 16 字节。' +
-      '逐行移植自 liboqs 内置官方实现，官方向量 pk/sk/ct/ss 逐字节一致。' +
-      '注意：密钥与密文远大于 ML-KEM，约 1 秒。';
-    var KG_INFO = '生成 FrodoKEM-640-SHAKE 密钥对，输出 pk（19232 字符）与 sk（39776 字符）。' +
-      '参数栏填 sk 则只输出私钥。约 1 秒。';
-    var EN_INFO = '用公钥封装：输出密文 ct（19504 字符）与共享密钥 ss（32 字符）。密钥栏填公钥。';
-    var DE_INFO = '用私钥解封装：密钥栏填私钥，输入填密文，输出 16 字节共享密钥。' +
-      '密文被篡改时会静默返回伪随机密钥（FO 变换的隐含拒绝），属正常行为。';
+    var INFO = P.NAME + '：基于（普通）LWE 的格基 KEM，非结构化格，安全性归约到 LWE 困难性。' +
+      '已列入 ISO/IEC 18033-2:2006/Amd 2。本移植已用 frodokem.org 官方 KAT 向量逐条验证解封装。';
+    var KG_INFO = '生成 ' + P.NAME + ' 密钥对，输出 pk（' + (PK_BYTES * 2) + ' 字符）与 sk（' +
+      (SK_BYTES * 2) + ' 字符）。参数栏填 sk 则只输出私钥。';
+    var EN_INFO = '用公钥封装：输出密文 ct（' + (CT_BYTES * 2) + ' 字符）与共享密钥 ss（' +
+      (SS_BYTES * 2) + ' 字符）。密钥栏填公钥。';
+    var DE_INFO = '用私钥解封装：密钥栏填私钥，输入填密文，输出 ' + SS_BYTES +
+      ' 字节共享密钥。密文被篡改时会静默返回伪随机密钥（FO 变换的隐含拒绝），属正常行为。';
 
-    reg({ id: 'frodo640shake-keygen', name: 'FrodoKEM-640-SHAKE 密钥生成（ISO 标准化）',
-      group: '后量子密码', key: false, param: true,
-      paramLabel: '留空=随机生成；填 sk=只输出私钥',
-      info: KG_INFO,
+    reg({ id: P.ID + '-keygen', name: P.NAME + ' 密钥生成', group: '后量子密码',
+      key: false, param: true, paramLabel: '留空=随机生成；填 sk=只输出私钥', info: KG_INFO,
       enc: function (b, kk, pp, fmt) {
         var kp = keypair(function (n) { return rndBytes(n); });
         if (pp && /sk/i.test(String(pp))) return bytesOut(kp.sk, fmt);
         return bytesOut(kp.pk, fmt) + '\n::K::' + bytesOut(kp.sk, fmt);
       }, dec: false });
 
-    reg({ id: 'frodo640shake-encaps', name: 'FrodoKEM-640-SHAKE 封装（公钥加密）',
-      group: '后量子密码', key: true, param: false,
-      keyLabel: '封装公钥（9616 字节 Hex，19232 字符）',
-      info: EN_INFO,
+    reg({ id: P.ID + '-encaps', name: P.NAME + ' 封装（公钥加密）', group: '后量子密码',
+      key: true, param: false,
+      keyLabel: '封装公钥（' + PK_BYTES + ' 字节 Hex，' + (PK_BYTES * 2) + ' 字符）', info: EN_INFO,
       enc: function (b, kk, pp, fmt) {
         if (!kk) throw new Error('请在密钥栏填入封装公钥（Hex）');
         var pk = hexToBytes(String(kk).replace(/\s/g, ''));
@@ -406,10 +417,9 @@
         return bytesOut(out.ct, fmt) + '\n::K::' + bytesOut(out.ss, fmt);
       }, dec: false });
 
-    reg({ id: 'frodo640shake-decaps', name: 'FrodoKEM-640-SHAKE 解封装（私钥解密）',
-      group: '后量子密码', key: true, param: false,
-      keyLabel: '解封装私钥（19888 字节 Hex，39776 字符）',
-      info: DE_INFO,
+    reg({ id: P.ID + '-decaps', name: P.NAME + ' 解封装（私钥解密）', group: '后量子密码',
+      key: true, param: false,
+      keyLabel: '解封装私钥（' + SK_BYTES + ' 字节 Hex，' + (SK_BYTES * 2) + ' 字符）', info: DE_INFO,
       enc: function (b, kk, pp, fmt) {
         if (!kk) throw new Error('请在密钥栏填入解封装私钥（Hex）');
         var sk = hexToBytes(String(kk).replace(/\s/g, ''));
@@ -417,4 +427,19 @@
         return bytesOut(decaps(ct, sk), fmt);
       }, dec: false });
   }
-})();
+  return API;
+}
+
+/* 三个参数集，CDF 由官方 error_distribution 换算所得 */
+var FRODO_PARAMS = [
+  { ID: 'frodo976shake', NAME: 'FrodoKEM-976-SHAKE', N: 976, NBAR: 8, LOGQ: 16, EB: 3, XOF: 'shake256',
+    SS: 24, PK: 15632, SK: 31296, CT: 15744,
+    CDF: [5638, 15915, 23689, 28571, 31116, 32217, 32613, 32731, 32760, 32766, 32767] },
+  { ID: 'frodo1344shake', NAME: 'FrodoKEM-1344-SHAKE', N: 1344, NBAR: 8, LOGQ: 16, EB: 4, XOF: 'shake256',
+    SS: 32, PK: 21520, SK: 43088, CT: 21632,
+    CDF: [9142, 23462, 30338, 32361, 32725, 32765, 32767] },
+  { ID: 'frodo640shake', NAME: 'FrodoKEM-640-SHAKE', N: 640, NBAR: 8, LOGQ: 15, EB: 2, XOF: 'shake128',
+    SS: 16, PK: 9616, SK: 19888, CT: 9720,
+    CDF: [4643, 13363, 20579, 25843, 29227, 31145, 32103, 32525, 32689, 32745, 32762, 32766, 32767] }
+];
+for (var _fpi = 0; _fpi < FRODO_PARAMS.length; _fpi++) makeFrodo(FRODO_PARAMS[_fpi]);

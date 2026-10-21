@@ -24,13 +24,6 @@
   Bech32m 地址编码（BIP-350）  【bech32m】
   BIP-39 助记词  【bip39-mnemonic】
   Base58Check 编码（比特币地址）  【base58check】
-【古典密码】(6)
-  维吉尼亚密码  【vigenere】
-  Atbash 密码  【atbash】
-  仿射密码  【affine】
-  栅栏密码  【railfence】
-  Playfair 密码  【playfair】
-  培根密码  【bacon】
 【单向哈希】(86)
   MD5  【md5】
   SHA-1  【sha1】
@@ -197,7 +190,7 @@
   PASETO v4.local 解密  【paseto-v4-local-dec】
   PASETO v2.local 加密  【paseto-v2-local-enc】
   PASETO v2.local 解密  【paseto-v2-local-dec】
-【非对称加密】(37)
+【非对称加密】(39)
   RSA (RSA-OAEP)  【rsa】
   RSA-PSS 签名  【rsa-pss】
   ECDSA (P-256)  【ecdsa-p256】
@@ -235,6 +228,8 @@
   NaCl box 解封（X25519 双方）  【nacl-box-dec】
   NaCl sealed box 封装（匿名发送）  【nacl-sealedbox-enc】
   NaCl sealed box 解封（匿名接收）  【nacl-sealedbox-dec】
+  age 加密（v1 / X25519 收件人）  【age-enc】
+  age 解密（v1 / X25519 身份）  【age-dec】
 【数字签名】(7)
   ECDSA（椭圆曲线签名）  【ecc-ecdsa】
   DSA（离散对数签名）  【dsa】
@@ -243,11 +238,19 @@
   PASETO v4.public 验签（Ed25519）  【paseto-v4-public-verify】
   PASETO v2.public 签发（Ed25519）  【paseto-v2-public-sign】
   PASETO v2.public 验签（Ed25519）  【paseto-v2-public-verify】
-【密钥工具】(4)
+【密钥工具】(5)
   密钥生成（19 种：ECC/SM2/Ed25519/X25519/Ed448/X448/RSA/…）  【keygen】
   密钥对导出（JWK / PEM）  【key-export】
   X25519（密钥交换）  【x25519】
   TLS 1.3 HKDF-Expand-Label（RFC 8446）  【hkdf-expand-label】
+  age 密钥对生成（v1 身份 + 收件人）  【age-keygen】
+【古典密码】(6)
+  维吉尼亚密码  【vigenere】
+  Atbash 密码  【atbash】
+  仿射密码  【affine】
+  栅栏密码  【railfence】
+  Playfair 密码  【playfair】
+  培根密码  【bacon】
 【校验和】(10)
   CRC32  【crc32】
   CRC32C (Castagnoli)  【crc32c】
@@ -259,7 +262,7 @@
   CRC64-XZ（Go ECMA）  【crc64xz】
   FNV-1a 32  【fnv1a32】
   CRC-24（OpenPGP，RFC 4880）  【crc24】
-【后量子密码】(32)
+【后量子密码】(41)
   ML-KEM-512（后量子 KEM）  【mlkem512】
   ML-KEM-768（后量子 KEM）  【mlkem768】
   ML-KEM-1024（后量子 KEM）  【mlkem1024】
@@ -270,6 +273,9 @@
   HQC-128（后量子 KEM）  【hqc128】
   HQC-192（后量子 KEM）  【hqc192】
   HQC-256（后量子 KEM）  【hqc256】
+  BIKE-L1（后量子 KEM · 码基）  【bike1】
+  BIKE-L3（后量子 KEM · 码基）  【bike3】
+  BIKE-L5（后量子 KEM · 码基）  【bike5】
   Classic McEliece 348864（码基 KEM）  【mceliece348864】
   Classic McEliece 348864 密钥生成（官方 KAT 验证）  【mceliece348864-keygen】
   Classic McEliece 460896（码基 KEM）  【mceliece460896】
@@ -280,7 +286,13 @@
   Classic McEliece 6960119 密钥生成（官方 KAT 验证）  【mceliece6960119-keygen】
   Classic McEliece 8192128（码基 KEM）  【mceliece8192128】
   Classic McEliece 8192128 密钥生成（官方 KAT 验证）  【mceliece8192128-keygen】
-  FrodoKEM-640-SHAKE 密钥生成（ISO 标准化）  【frodo640shake-keygen】
+  FrodoKEM-976-SHAKE 密钥生成  【frodo976shake-keygen】
+  FrodoKEM-976-SHAKE 封装（公钥加密）  【frodo976shake-encaps】
+  FrodoKEM-976-SHAKE 解封装（私钥解密）  【frodo976shake-decaps】
+  FrodoKEM-1344-SHAKE 密钥生成  【frodo1344shake-keygen】
+  FrodoKEM-1344-SHAKE 封装（公钥加密）  【frodo1344shake-encaps】
+  FrodoKEM-1344-SHAKE 解封装（私钥解密）  【frodo1344shake-decaps】
+  FrodoKEM-640-SHAKE 密钥生成  【frodo640shake-keygen】
   FrodoKEM-640-SHAKE 封装（公钥加密）  【frodo640shake-encaps】
   FrodoKEM-640-SHAKE 解封装（私钥解密）  【frodo640shake-decaps】
   sntrup761 密钥生成  【sntrup761-keygen】
@@ -321,8 +333,12 @@
   Pedersen DKG 分布式密钥生成  【dkg】
   Shamir 门限拆分（SSS）  【sss-split】
   Shamir 门限还原（SSS）  【sss-recover】
-【认证加密】(4)
+【认证加密】(8)
   Ascon-128a（AEAD）  【ascon128a】
+  AEGIS-128L（AEAD，128 位标签）  【aegis128l】
+  AEGIS-128L（AEAD，256 位标签）  【aegis128l256】
+  AEGIS-256（AEAD，128 位标签）  【aegis256aead】
+  AEGIS-256（AEAD，256 位标签）  【aegis256aead256】
   AES-128-EAX（认证加密，可变 tag）  【eax-aes128】
   AES-192-EAX（认证加密，可变 tag）  【eax-aes192】
   AES-256-EAX（认证加密，可变 tag）  【eax-aes256】
@@ -333,5 +349,4 @@
   Falcon 验签（FN-DSA / FIPS 205）  【falcon-verify】
   Falcon 签名（FN-DSA / FIPS 205）  【falcon-sign】
   Falcon 密钥生成（FN-DSA / FIPS 205）  【falcon-keygen】
-
-TOTAL|321
+TOTAL|337

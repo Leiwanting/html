@@ -586,17 +586,23 @@
       group: '非对称加密',
       key: true,
       keyLabel: '己方私钥（Hex）',
+      key2: true,
+      key2Label: '对方公钥（Hex）',
+      rawKey: true,
       param: true,
-      paramLabel: '对方公钥（Hex）',
+      paramLabel: '对方公钥（Hex，也可填在第二密钥栏）',
+      paramOptional: true,
       info: '经典有限域 DH，1024 位 MODP Group 2。加密与解密都执行同一操作：用己方私钥与对方公钥计算共享密钥，输出为 Hex。需要先生成私钥/公钥：见下方说明。',
-      enc: async function (b, k, p, fmt) {
-        if (!k || !p) throw new Error('需要己方私钥与对方公钥（Hex）');
-        const shared = dhCompute(k.trim(), p.trim());
+      enc: async function (b, k, p, fmt, k2) {
+        var peer = (k2 || p || '').trim();
+        if (!k || !peer) throw new Error('需要己方私钥与对方公钥（Hex）');
+        const shared = dhCompute(k.trim(), peer);
         return bigIntToHex(shared);
       },
-      dec: async function (s, k, p, fmt) {
-        if (!k || !p) throw new Error('需要己方私钥与对方公钥（Hex）');
-        const shared = dhCompute(k.trim(), p.trim());
+      dec: async function (s, k, p, fmt, k2) {
+        var peer = (k2 || p || '').trim();
+        if (!k || !peer) throw new Error('需要己方私钥与对方公钥（Hex）');
+        const shared = dhCompute(k.trim(), peer);
         return bigIntToHex(shared);
       }
     });
@@ -2096,11 +2102,14 @@ info: 'Camellia 分组密码，256 位密钥，24 轮。'
 reg({
 id: 'ecc-ecies', name: 'ECC 通用加密（ECIES）', group: '非对称加密',
 key: true, keyOptional: true, keyLabel: '己方私钥（Hex，解密用）',
-param: true, paramOptional: true, paramLabel: '对方公钥（Hex，加密用）',
+key2: true, key2Optional: true, key2Label: '对方公钥（Hex，加密用）',
+rawKey: true,
+param: true, paramOptional: true, paramLabel: '对方公钥（Hex，加密用；也可填在第二密钥栏）',
 info: '椭圆曲线集成加密方案：临时密钥 ECDH → SHA-256 派生 → AES-256-CBC + HMAC-SHA256。加密用对方公钥，解密用自己的私钥（密文自带临时公钥与 IV）。' + ECC_HINT,
-enc: async function (b, k, p, fmt) {
-if (!p) throw new Error('加密请在参数栏填对方公钥（Hex）');
-var r = resolveCurve(k, p);
+enc: async function (b, k, p, fmt, k2) {
+var pk = k2 || p;
+if (!pk) throw new Error('加密请填对方公钥（Hex）');
+var r = resolveCurve(k, pk);
 var pubBytes = hexToBytes(r.param);
 var curve = r.curve;
 var ct = await eciesEncrypt(b, curve, pubBytes);
@@ -2118,18 +2127,22 @@ return pt;
 reg({
 id: 'ecc-ecdh', name: 'ECC 密钥协商（ECDH）', group: '非对称加密',
 key: true, keyLabel: '己方私钥（Hex）',
-param: true, paramLabel: '对方公钥（Hex）',
+key2: true, key2Label: '对方公钥（Hex）',
+rawKey: true,
+param: true, paramOptional: true, paramLabel: '对方公钥（Hex，也可填在第二密钥栏）',
 info: '椭圆曲线 Diffie-Hellman：加密与解密都执行同一操作，用己方私钥与对方公钥算出共享密钥（输出 Hex）。' + ECC_HINT,
-enc: async function (b, k, p, fmt) {
-if (!k || !p) throw new Error('需要己方私钥与对方公钥（Hex）');
-var r = resolveCurve(k, p);
+enc: async function (b, k, p, fmt, k2) {
+var pk = k2 || p;
+if (!k || !pk) throw new Error('需要己方私钥与对方公钥（Hex）');
+var r = resolveCurve(k, pk);
 var priv = bigFromHex(r.key);
 var P = r.curve.bytesToPoint(hexToBytes(r.param));
 return bytesToHex(ecSharedXBytes(r.curve, priv, P));
 },
-dec: async function (s, k, p, fmt) {
-if (!k || !p) throw new Error('需要己方私钥与对方公钥（Hex）');
-var r = resolveCurve(k, p);
+dec: async function (s, k, p, fmt, k2) {
+var pk = k2 || p;
+if (!k || !pk) throw new Error('需要己方私钥与对方公钥（Hex）');
+var r = resolveCurve(k, pk);
 var priv = bigFromHex(r.key);
 var P = r.curve.bytesToPoint(hexToBytes(r.param));
 return bytesToHex(ecSharedXBytes(r.curve, priv, P));
@@ -2193,11 +2206,14 @@ return strToBytes(ok ? '验签通过：签名有效 ✓' : '验签失败：签�
 reg({
 id: 'elgamal', name: 'ElGamal 加密', group: '非对称加密',
 key: true, keyOptional: true, keyLabel: '己方私钥 x（Hex，解密用）',
-param: true, paramOptional: true, paramLabel: '对方公钥 y（Hex，加密用）',
+key2: true, key2Optional: true, key2Label: '对方公钥 y（Hex，加密用）',
+rawKey: true,
+param: true, paramOptional: true, paramLabel: '对方公钥 y（Hex，加密用；也可填在第二密钥栏）',
 info: '经典 ElGamal 公钥加密：1024 位 MODP Group 2 参数，明文按 64 字节分块，每块使用独立随机数（密文约为明文的 4 倍长）。加密用对方公钥，解密用自己的私钥。',
-enc: async function (b, k, p, fmt) {
-if (!p) throw new Error('加密请在参数栏填对方公钥 y（Hex）');
-var y = bigFromHex(p);
+enc: async function (b, k, p, fmt, k2) {
+var py = k2 || p;
+if (!py) throw new Error('加密请填对方公钥 y（Hex）');
+var y = bigFromHex(py);
 if (y <= 1n || y >= EG_P - 1n) throw new Error('对方公钥超出范围');
 return bytesOut(elgamalEncrypt(b, y), fmt);
 },

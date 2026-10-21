@@ -2115,3 +2115,507 @@ var data = asHex ? hexToB(bToHex(inB(b)).length ? inB(b) : inB(b)) : inB(b);
 
 从 **zip 解压目录**独立复算：脚本 75/75、ALGOS 296 唯一 296、说明超 200 字 0、
 BUILD_INFO 一致、MTProto 272/272。
+
+
+---
+
+## 第六十六批：协议 / 容器级封装（XSalsa20 · NaCl · Fernet · PASETO）
+
+**新增 17 个条目，算法 296 → 313。官方向量 123/123，界面入口 23/23。**
+
+### 一、新增条目
+
+| 条目 | 参照物 |
+|---|---|
+| XSalsa20 流密码 | PyNaCl 1.6.2（libsodium `crypto_stream_xsalsa20`） |
+| NaCl secretbox 封装 / 解封 | libsodium `crypto_secretbox_easy` |
+| NaCl box 封装 / 解封 | libsodium `crypto_box_beforenm` + secretbox |
+| NaCl sealed box 封装 / 解封 | libsodium `crypto_box_seal` |
+| Fernet 加密 / 解密 | Python cryptography 50.0.1 |
+| PASETO v4.local 加密 / 解密 | pyseto 1.10.0 |
+| PASETO v2.local 加密 / 解密 | pyseto 1.10.0 |
+| PASETO v4.public 签发 / 验签 | pyseto 1.10.0 |
+| PASETO v2.public 签发 / 验签 | pyseto 1.10.0 |
+
+本批是本项目第一次大规模接入「第三方生产库」级别的容器格式（此前多为算法原语）。
+
+### 二、三个只有对拍才能发现的坑
+
+**1. HSalsa20 的输出 word 次序不是 0..3 + 12..15**
+
+直觉写法（也是我第一版）是取 `state[0..3] ‖ state[12..15]`。实际 NaCl/libsodium 取的是
+**0, 5, 10, 15（常量槽）+ 6, 7, 8, 9（nonce 槽）**。
+
+拿 libsodium 的 `crypto_core_hsalsa20` 直接对拍才定位到：固定输入下，
+正确次序输出 `d0e0df78…`，错误次序输出 `d0e0df78973935d9…` —— **前 4 字节相同**，
+极易误判成「某一轮写错」而不是「取错索引」。
+
+**2. PyNaCl 的 `crypto_box_beforenm` 参数顺序是 (public_key, private_key)**
+
+传反**不报错、不抛异常**，只是得到另一个密钥。因为 X25519 本身对称，
+共享密钥那一步看不出问题，只有派生后的 beforenm 值不同才发现。
+
+**3. Fernet 的 base64url 必须保留尾部 `=`**
+
+框架里的 `b64urlEncode` 会去掉填充（PASETO 规范要求无填充，正确）。
+Fernet 规范要求保留 —— 差异只在 token 最后 1~2 个字符，
+且 `b64urlDecode` 能容忍缺失，所以「生成后自己再解一遍」完全测不出来，
+只有跟 Python 的 token 字符串逐字符比才暴露。
+
+### 三、另外三处
+
+- **pyseto 的 v2 nonce 会被再派生一次**：`n = BLAKE2b(key=传入 nonce, msg=payload, 24)`，
+  所以 token 里携带的 nonce ≠ 传入值。v4 没有这一层。
+- **主流程解密走 `a.dec`**：解密类条目必须定义 `dec`，只写 `enc` 会直接抛
+  "is not a function"。这与 CAST-256 那次是同一类「测试与界面用不同入口」的问题。
+- **参数分割吃掉 JSON 的引号**：`_splitP` 原本无条件剥离 `"`，
+  导致 footer `{"kid":"x"}` 变成 `{kid:x}`，静默产出错误 token。
+  改成只在首尾是【配对】引号时才剥。
+
+### 四、验证
+
+从 **zip 解压目录**独立复算：脚本 76/76、ALGOS 313 唯一 313、说明超 200 字 0、
+官方向量 123/123、界面入口 23/23（含篡改拒绝与错误密钥拒绝各 1 组）。
+
+
+---
+
+## 第六十七批：LMS / HSS（RFC 8554）—— SP 800-208 第二个状态化哈希签名
+
+**新增 3 个条目，算法 313 → 316。官方向量 2 组（TC2 公钥生成 + TC1 验签），合计 21/21。**
+
+### ⚠ 核心 bug：验签漏了叶子哈希层（D_LEAF）
+
+`computeRoot` 的起点必须是【叶子哈希】
+`H(I‖u32str(q+2^h)‖D_LEAF‖K_ots)`，**不是 K_ots 本身**。
+
+漏掉这一层后 TC1 官方签名怎么算都对不上，我一度判定"本地向量残缺 / 层级对应不明"，
+差点放弃这一批。补上叶子哈希后，TC1 官方签名立刻验过。
+
+这类 bug 的自洽测试也会失败，所以它不算"静默错误"——但**误判成数据问题更危险**：
+差点让一个本来能拿到的官方锚点被放弃。
+
+### 四个凭直觉必错的点（已写进文件头注释）
+
+1. 域分离常量是 **D_PBLC=0x8080 / D_MESG=0x8181 / D_LEAF=0x8282 / D_INTR=0x8383**，
+   不是常见的 0x0000 / 0xffff；
+2. LM-OTS 私钥 `x_q[i] = H(I‖u32str(q)‖u16str(i)‖u8str(0xff)‖SEED)`，
+   **SEED 在最后**——与 XMSS 的 `PRF(sk_seed,…)` 结构完全不同；
+3. 校验和要**左移 ls 位**再拼进 S（w=4 时 ls=4，w=8 时 ls=0）；
+4. `coef(S,i,w)` 的字节索引是 `floor(i*w/8)`，不是 i。
+
+### 官方向量
+
+| 来源 | 内容 | 结果 |
+|---|---|---|
+| RFC 8554 Appendix F **TC2 顶层密钥** | SEED=558b8966… / I=d08fabd4… / H10+W4 → 树根 | == 官方 K `32a58885cd…` **逐字节** |
+| RFC 8554 Appendix F **TC1 sig[0]** | H5+W8，被签消息是第二级 LMS 公钥的 56 字节序列化 | 验签 **VALID**；改消息 / 改签名 → INVALID |
+
+TC2 建树 1024 叶 × 67 链，JS 耗时 1.6 秒。
+
+### 参照物获取过程中的两个坑
+
+- rfc-editor 与 datatracker 在本环境**均返回 403**，RFC 全文只能经页面提取；
+- RFC 排版把每个 32 字节值**拆成两行 16 字节**，第一次提取只拿到前半截，
+  导致签名比对全错。第二次明确要求"两行拼接成 64 hex"才拿全值。
+
+### 验证（从 zip 解压目录独立复算）
+
+```
+脚本加载 77/77      ALGOS 316 唯一 316      说明超 200 字 0
+LMS 官方向量 5/5    往返与篡改 6/6          界面入口 4/4
+```
+
+
+## 第六十八批：界面输入栏扩容（第二密钥栏）与三处缺陷修复
+
+### 修复 1（致命）：单侧操作报 `a.enc is not a function`
+`NaCl sealed box 解封`、`Fernet 解密` 等条目只注册了 `dec`。点「加密」时直接抛
+`a.enc is not a function` —— 用户看到的只有一行内部错误，不知道该点哪个按钮。
+已在 `runEnc` / `runDec` 入口加保护：
+
+```
+if (typeof a.enc !== 'function') throw new Error('「XXX」只有解密操作，请点「解密」按钮');
+```
+
+### 修复 2：非对称条目缺独立公钥栏
+「己方私钥 + 对方公钥」此前挤在 key 与 param 两栏里，param 同时还要装 nonce、
+派生路径等参数，标签语义混乱；且密钥模式下拉（口令 KDF）对这些条目仍然显示，
+用户选「口令」会派生出完全错误的密钥。
+
+- 新增 **`key2` 第二密钥栏**（`index.html` + `updateAlgoUI` + `els`），标签由
+  `key2Label` 自定义，`key2Optional` 控制是否必填；`enc/dec` 签名追加第 5 个参数 `k2`。
+- 新增 **`rawKey`** 标志：置位时隐藏「密钥模式」下拉，避免口令 KDF 污染原始密钥。
+- 涉及条目：NaCl box 封装/解封、NaCl sealed box 封装/解封、BIP-32、
+  Diffie-Hellman(MODP)、ECC-ECDH、ECC-ECIES、ElGamal、ECDH(P-256 PEM)。
+- **向后兼容**：上述条目内部一律 `var peer = k2 || p`，旧脚本用 param 传公钥照常工作。
+
+### 修复 3：BIP-32 无法填助记词
+原先只能填 16~64 字节 Hex 种子。现在第一栏可直接粘 BIP-39 助记词
+（12/15/18/21/24 词，自动走 PBKDF2-HMAC-SHA512 转 64 字节根种子），
+第二栏填 BIP-39 口令 passphrase（官方向量用 `TREZOR`）。
+
+新增 `bip39ToSeedSync()`：本项目此前只有异步 WebCrypto 版，BIP-32 是同步函数，
+用 `hmacSha512` 手写 PBKDF2（2048 轮，块长 128，U1 异或累积）。
+参照物为 Node `pbkdf2Sync` 独立实现，**TREZOR 口令与空口令两组均逐字节一致**。
+
+### 顺带
+- `doClear()` 补清 `key2`。
+- NaCl sealed box 封装第二栏可指定临时私钥（留空随机），使密文可复现；
+  解封第二栏可补对方公钥，用于密文前 32 字节已被剥离的场景。
+
+### 验证
+`t_ui_keys.js` **32/32**；全量健康检查：脚本 **77/77**、算法 **316 无重复**、
+说明超 200 字 0。
+
+---
+
+## 第六十九批：B 组开工 —— BIKE（NIST Round 4）官方 KAT 就位
+
+**本批状态：权威向量已产出并验证，JS 实现尚未开始（下一批做）。**
+
+### 已完成
+
+1. **编译官方源码并产出确定性 KAT**（三参数集）
+   - 来源：`liboqs-main/src/kem/bike/additional_r4`（BIKE additional，2023-01-27）
+   - 自建 shim：`OQS_SHA3_sha3_384` / `OQS_SHA3_shake256_inc_*`（KeccakP-1600-opt64 + 手写 sponge）
+   - `OQS_randombytes` → splitmix64 确定性 PRNG（seed `0x1234567890abcdef`）
+   - 产物：`testvectors/bike_l{1,3,5}.txt`，含 SK/PK/CT/SS 与 MATCH
+
+2. **长度与 liboqs 头逐一对齐**
+
+   | LEVEL | R_BITS | pk | sk | ct | ss |
+   |---|---|---|---|---|---|
+   | 1 | 12323 | 1541 | 5223 | 1573 | 32 |
+   | 3 | 24659 | 3083 | 10105 | 3115 | 32 |
+   | 5 | 40973 | 5122 | 16494 | 5154 | 32 |
+
+3. **确定性验证**：三参数集各跑两次，`cmp` 完全一致；`MATCH=1`（封装/解封装自洽）
+
+4. **⚠ 参照物自身必须可信**：手写的 SHA3 shim 用 Python `hashlib` 交叉验证 **4/4**
+   （sha3_384 abc / 空 / 200 字节跨块；shake256 增量 400 字节）。
+   不验证就当成权威锚点，会让整批结论建立在错误参照物上。
+
+### 挖到的坑（已记录进 `work/bike_notes.md`）
+
+- **采样是 Fisher-Yates，不是 rejection。** `bike_defs.h` 里的 `MAX_RAND_INDICES_T`
+  （271/373/605）是本版本**未使用的旧版残留**。凭它写实现会全错。
+- **`keypair_derand` / `encaps_derand` 在这个版本是 stub**，直接返回 `OQS_ERROR`。
+  所以只能 patch 随机源（`get_seeds` → `OQS_randombytes`）来取得确定性，不能走 derand 接口。
+- **`function_l` 是 SHA3-384 截断 32 字节**，不是 SHA-256。
+- 编译 `KeccakP-1600-opt64.c` 很慢（>60s），已单独编译成 `keccak.o` 缓存复用。
+
+### 未做
+
+BIKE 的 JS 实现（gf2x Karatsuba / BGF decoder / 常量时间采样）尚未开始，
+本批只是把「可验证的锚点」先立住 —— 没有官方 KAT 就没法判断实现对错。
+
+## 第六十九批：Falcon（FN-DSA / FIPS 205）验签上线
+
+### 新增
+- `crypto_falcon.js`（新增文件）：Falcon-512 / Falcon-1024 签名验证，1 个界面条目 `falcon-verify`。
+  算法数 316 → 317。参数集由签名头字节自动识别（0x39=512、0x3A=1024）。
+
+### 参照物（官方 KAT）
+- PQClean `crypto_sign/falcon-{512,1024}/clean` 编译产物，随机源换为 NIST AES256-CTR-DRBG（确定性）。
+- Falcon-512：5 组；Falcon-1024：3 组。每组含 pk / sig / 消息 / 官方 verify 结论。
+- 界面入口 10/10（走 reg 注册的真实链路），底层对拍 56/56（含篡改拒绝与健壮性）。
+- 内置 SHAKE256 与 Python `hashlib.shake_256` 交叉校验 4/4。
+
+### 为什么只做验签
+验签路径（`vrfy.c` 的 `verify_raw`）全程整数运算：NTT + Montgomery 乘，不含浮点 FFT，
+故可用 JS 精确复现。密钥生成与签名需要 ffLDL 树、浮点 FFT 与高斯采样，本轮未实现。
+
+### 踩坑（三个，都是"语法照抄没问题、语义被 JS 改了"）
+1. **C 的 uint32 右移 vs JS 的算术右移**。`hash_to_point_ct` 里 `wr -= 24578 & (((wr-24578)>>31)-1)`，
+   C 中 `wr-24578` 为负时 uint32 下溢 → `>>31` 得 1；JS 负数 `>>31` 得 -1，mask 取反，
+   结果 `hm` 全成 0xFFFE。必须先 `>>>0` 转 uint32 再 `>>>31`。
+2. **int16 → uint32 的回绕**。`verify_raw` 里 `w = (uint32_t)s2[u]`，负数变 2^32+x，加 Q 后回绕
+   正好是 x+Q。JS 需 `s2[u] >>> 0` 后再加，否则只加 1。
+3. **`z * Q0I` 的 uint32 溢出**。`mq_montymul` 中该乘积在 C 会 mod 2^32（约 1.8e12），
+   JS Number 不溢出，必须 `(x*y)>>>0` 逐步模拟。
+
+### 测试脚本自身的两个错误（非实现问题，但会误导结论）
+- C 侧 `MSG[33] = "…mlen=33!!"` 实际只有 32 字符，第 33 字节是 NUL；传 `mlen=33` 把空字节
+  也算进消息，导致 C 与 JS/Python 三方 ks32 不一致。统一为 32 字节后一致。
+- 界面测试用 `text.indexOf('VALID')>=0` 判定，而 "INVALID" 也含 "VALID" 子串，
+  会把失败判成通过。改用 `indexOf('验签结果 = VALID')>=0` 精确匹配后重判。
+
+### 验证
+- 脚本加载 78/78，ALGOS 317 唯一 317，说明超 200 字 0。
+- 向量已固化至 `testvectors/falcon_kat_512.txt`、`testvectors/falcon_kat_1024.txt`。
+
+## 第七十批：FIPS-202 补齐 & Falcon 密钥生成/签名（进行中）
+
+### 已交付
+- **FIPS-202 补齐**：新增 `sha3-224` / `sha3-384` 两个条目（此前只有 256/512）。
+- **修复 `sha3Digest` 的 rate 计算 bug**：原实现 `outLen === 32 ? 136 : 72`
+  只覆盖 256/512；224/384 会落到 72（SHA3-512 的 rate）而算出 SHA3-512 的值。
+  正确公式 `rate = 200 - 2*outLen`（224->144 / 256->136 / 384->104 / 512->72）。
+  ——这正是此前 224/384 一直没开放的原因。
+- 验证：Python hashlib（独立实现）3 组消息 × 4 种输出 = **12/12**。
+
+### Falcon 官方 KAT 已就位（锚点）
+编译 PQClean `crypto_sign/falcon-{512,1024}/clean`（官方 clean 实现），
+把 `PQCLEAN_randombytes` 换成 splitmix64 确定性流，产出：
+- 512：sk 1281 / pk 897 / sig，3 组（mlen=0,3,40），verify 3/3 OK
+- 1024：sk 2305 / pk 1793 / sig，3 组，verify 3/3 OK
+文件：`falcon_kat/kat_512.txt`、`falcon_kat/kat_1024.txt`
+
+### 关键技术结论（决定后续能否做）
+`inner.h` 中 `typedef uint64_t fpr` —— fpr **不是真正的定点数，而是用 uint64
+位模式软件模拟 IEEE-754 double**。实测（C 对照，18×18 组合）：
+```
+add   total=324 diff=0
+sub   total=324 diff=0
+mul   total=324 diff=3    ← 全部为 1e±300 上/下溢
+sqr   total=324 diff=18   ← 全部为 1e±300 上/下溢
+div   total=324 diff=3    ← 全部为 1e±300 上/下溢
+neg   total=324 diff=0
+half  total=324 diff=0
+sqrt  total=198 diff=0
+```
+**差异只在 1e±300 这类极端值出现**；Falcon 实际运算中 fpr 值域约 2^-30..2^30，
+因此 **JS 可直接用 Number（double）精确复现 fpr**，无需 BigInt，性能也快。
+`fpr_gm_tab`(2048 项) / `fpr_p2_tab`(11 项) 已提取为 double 数组。
+
+### 未完成（下轮继续）
+Falcon keygen / sign 的 JS 移植。难点不在浮点（已证明可用 Number），
+而在 `keygen.c` 的整数部分：`modp_*`（Montgomery 域）与 `zint_*`（多精度大数）
+约 1500 行，需逐个处理 JS 的 32 位截断语义；以及 `sign.c` 的
+ffLDL 树 + 高斯采样 + ffSampling。已有官方 KAT 作锚点，可逐层对拍。
+
+## 第七十批：Falcon 签名上线（密钥生成仍未完成）
+
+### 新增
+- `crypto_falcon_kg.js`（新增文件，index.html 已加引用）：Falcon 签名界面条目 `falcon-sign`。
+  - 由私钥头字节自动识别参数集：0x59=Falcon-512、0x5A=Falcon-1024。
+  - 流程复刻 PQClean `crypto_sign_signature` → `sign_dyn`：
+    1. `trim_i8_decode` 解出 f / g / F，`complete_private` 推出 G；
+    2. nonce(40B) 随机，`hm = hash_to_point_ct(SHAKE256(nonce‖msg))`；
+    3. prng seed(48B) 随机，`SHAKE256(sd)` 流的第 k 段 56 字节作为第 k 次尝试的 PRNG 初态
+       （复刻 `sign_dyn` 的 for(;;) 重试，而不是重新播种）；
+    4. `comp_encode(s2)`，输出 `0x30+logn ‖ nonce ‖ enc`。
+- 算法数 319 → 320。
+
+### 验证
+- 界面入口 `t_falcon_sign_ui.js` **13/13**：512 与 1024 签名后由**官方公钥**（PQClean 编译产出）走
+  独立验签路径判定 VALID；改一个字符即判 INVALID；非法私钥头/空私钥给出可读报错。
+- `t_full.js`（512/1024）底层对拍：f / g / F / G / hm 与官方中间值 **逐字节 MATCH**。
+- 健康检查：script 79/79、ALGOS 320 无重复、说明超 200 字 0。
+
+### 已知未完成：密钥生成
+`keygen.c` 的 `solve_NTRU`（解 NTRU 方程 f·G − g·F = q）约 1500 行，
+依赖 RNS 多精度整数（zint_*）、二进制扩展 GCD（zint_bezout）与逐层 Babai 取整回代。
+本轮**未实现**，因此 `falcon-keygen` 条目未上线。已具备的锚点：
+- `work/falcon/kat512_dbg.txt` / `kat1024_dbg.txt`：官方 f / g / F / G / h / sk / pk 全套中间值，
+  可直接逐层对拍；
+- 已确认算法骨架：范数递归 f₁=f·σ(f) 降到半维 → 最深层用扩欧求解 → 逐层 Babai 取整回代。
+
+### 踩坑
+- `drv.c` 里的 `sig2` **没有写入 nonce**（驱动脚本本身只写了 `sig[0]` 与 `comp_encode`），
+  因此比对签名时必须跳过我方签名中的 40 字节 nonce，否则长度 652 vs 616 会被误判为失败。
+- 官方 nonce 在 512 与 1024 两份 KAT 中**完全相同**（同一个 xorshift64* 初态），
+  初见极易误判成"nonce 没生效"。
+- 我的 `s2` 与官方 `s2` **不一致**（512/512 全不同），但签名本身有效（官方公钥验签 VALID）。
+  原因是高斯采样器消耗随机流的顺序与官方不完全相同；Falcon 签名本身是随机化的，
+  同一消息本就有多个合法签名，故不影响正确性，**但不能声称"与官方逐字节一致"**。
+
+---
+
+## 第七十七批：Falcon 密钥生成上线（算法 320 → 321）
+
+`falcon-keygen` 条目已注册，Falcon-512 / 1024 均可生成密钥对。算法总数 **321**。
+
+### 成果（可复算）
+
+- 新增 `crypto_falcon_kg2.js`，`index.html` 已加引用。
+- 界面入口测试 `t_falcon_keygen_ui.js`：**20/20 PASS**（512 / 1024 各：pk、sk 长度、
+  官方种子下 pk 逐字节一致、自产密钥签名→验签 VALID、篡改消息 INVALID；
+  外加随机种子、非法参数集、错误种子长度的报错）。
+- 从 zip 解压目录独立复算同样 20/20。
+- 健康检查：`script 80/80` 加载、`ALGOS 321` 无重复、说明超 200 字 **0**。
+
+### 与官方的关系（必须说清）
+
+同一 48 字节种子下：
+
+```
+f   逐系数 MATCH
+g   逐系数 MATCH
+h   逐系数 MATCH
+pk  逐字节 MATCH        ← 公钥与官方完全一致
+sk  仅 F 段不同（偏移 769 起，503/1281 字节）
+```
+
+**F 为什么不同**：`f·G − g·F = q` 的解不唯一——若 (F,G) 是一组解，则
+`(F + f·t, G + g·t)` 对任意 t 都成立。官方用浮点迭代 Babai（scale_k 每轮减 25 bits，
+只取最高 10 个 word），本项目用 BigInt 定点 negacyclic FFT 一次精确取整，
+收敛路径不同 → 选中了另一个**同样合法**的解。实测本项目 |F|max=106、官方 74，
+签名采样重试 1 次即通过，密钥有效（签名→验签 VALID）。
+
+**因此不声称 sk 与官方逐字节一致**，只声称：f/g/h/pk 一致、密钥有效。
+
+### 本批踩到的三个 bug（都是我自己的）
+
+1. **`fpr` 数组布局搞错**：PQClean 的 FFT 数组长度是 `n = 1<<logn`，
+   其中 `[0,hn)` 是实部、`[hn,n)` 是虚部，所有 `poly_*` 循环**只走 hn**。
+   我写成 `2n` 长度、循环走 `n`，bnorm 恒不满足 → 64 次重试全部被拒，
+   表现为"密钥生成永远失败"，极易误判成采样器有问题。
+2. **`poly_mul_autoadj_fft` 是 `a *= b` 不是 `a *= |b|²`**：看名字容易想成 "auto-adjoint"，
+   实际源码里就一行 `a[u] = fpr_mul(a[u], b[u])`。
+3. **SHAKE 流被读完**：采样重试多时 64KB 缓冲耗尽，报 `Cannot convert undefined to a BigInt`。
+   改成按需翻倍重新抽取（XOF 前缀一致，安全）。
+
+### 参照物又错了一次
+
+`kat512.txt` 的 pk 与 `dump512_first.txt` 的 h **种子不同**，没有可比性；
+解出的 512 个值都落在 [6,12284] 里，看着"很像对的"，差点误判编码写错。
+判据改成同一 seed 内部比对后才对上。
+
+### 文件
+
+- `dist/crypto_falcon_kg2.js`（新增，md5 `979425348a5ec3f1a14ecd5d45462567`）
+- `dist/t_falcon_keygen_ui.js`（界面入口测试）
+- `work/build_kg2.js`（组装脚本，从 `work/falcon_kg.js` + `gauss_tab.js` 内联生成）
+- `work/t_keygen_e2e.js`（编码器对拍 + 链路测试）
+
+---
+
+## 第七十八批：Falcon 性能优化（2.1x ~ 5.9x，输出逐字节不变）
+
+优化对象：`falcon-keygen`（512 / 1024）。**三个条目的输出与优化前完全一致
+（7 个种子下 pk / sk 的 md5 全部相同），官方 pk 对拍仍然通过。**
+
+### 实测提速
+
+| 用例 | 优化前 | 优化后 | 倍数 |
+|---|---|---|---|
+| 512 seed off=11 | 5545 ms | 1093 ms | 5.1x |
+| 512 seed off=100 | 5499 ms | 1013 ms | 5.4x |
+| 512 seed off=200 | 2678 ms | 971 ms | 2.8x |
+| 512 seed off=300 | 3322 ms | 788 ms | 4.2x |
+| 512 seed off=400 | 5498 ms | 931 ms | 5.9x |
+| 1024 seed off=0 | 6108 ms | 2716 ms | 2.2x |
+| 1024 seed off=55 | 5987 ms | 2851 ms | 2.1x |
+
+界面入口实测：512 约 0.8 s（原 1.3 s），1024 约 3.0 s（原 4.6 s）。
+
+### 真正的瓶颈不是我以为的那个
+
+先按阶段计时，结果和直觉相反：
+
+```
+512 off=11 总 4368ms  tries=31
+  smallPoly 3019ms   bnorm 14ms   compute_pub 3ms   solveNTRU 772ms
+```
+
+`smallPoly` 占 69%。但把它从 BigInt 改成纯 Number（32 位分段比较，
+GAUSS 表预拆 hi/lo）后**只快了 3%** —— 说明开销不在比较，而在它调用的字节流。
+
+继续往下挖才找到真凶：**`crypto_falcon.js` 自带的 SHAKE256 只有 0.5 MB/s**。
+
+```
+shake256 0.25MB -> 581ms    1MB -> 1824ms    2MB -> 3976ms
+```
+
+原因是 `keccakF` 用 BigInt 实现，且 `rotl64(x, n)` 里每轮都做一次
+`BigInt(n)` 转换（24 轮 × 25 lane = 600 次/置换）。密钥生成要抽 1~2 MB
+随机流，SHAKE 一项就吃掉三分之二以上的时间。
+
+### 改法
+
+主文件 `Encryption_and_decryption_logic.js` 早就有 hi/lo 32 位的快
+`keccakF`（`crypto_core.js` 一直在复用它，注释里写明"由主文件提供"），
+只是 falcon 这份代码自带了一份 BigInt 版。改为优先走 `globalThis` 的快版本，
+单独 `require` 本文件时回退到 BigInt 版（保持可独立运行）。
+
+**踩的坑**：本文件的 IIFE 里有个同名的 BigInt `keccakF`，会**遮蔽**全局快版本。
+第一版直接写 `keccakF(S0)`，把 `Int32Array` 状态喂给了 BigInt 版，
+报 `Cannot mix BigInt and other types`。必须显式 `globalThis.keccakF`。
+
+吞吐 0.5 → **6.7 MB/s**。
+
+### 另外两处
+
+1. **定点精度 4096 → 1024 位**。实测各层 Babai 所需的 k 位数差别极大
+   （512：n=512 层仅 13 位，n=2 层 3139 位），固定 4096 让最耗时的大 n 层
+   做了大量无用运算。降到 1024 后 7 个种子的 pk / sk **逐字节不变**。
+   256 / 128 会失败（Babai 不精确 → 64 次重试），故 1024 保留 2 倍余量。
+
+2. **GAUSS 表改用 BigInt 字面量**。原先用 Number 存 64 位整数
+   （如 `1283868770400643928`），超出 53 位尾数会静默丢精度，
+   再 `BigInt()` 转换只是把损失固化。影响概率约 1e-17，实际从未触发
+   （改成 BigInt 后输出不变），但表述上不应依赖这点。
+
+### 验证
+
+- `shake256` vs Python `hashlib.shake_256`：**48/48**（输入 0/1/48/135/136/137/200/1000 字节
+  × 输出 1/32/136/137/300/4096 字节，覆盖 rate 边界与跨块）
+- 验签官方向量 **10/10**、签名 **13/13**、密钥生成 UI **20/20**
+- 7 个种子 pk / sk md5 与优化前逐一相同；`pk == 官方 pk` 仍然成立
+- 脚本加载 82/82、ALGOS 321 唯一 321、说明超 200 字 0
+
+### 没做的
+
+`solveNTRU` 在 1024 下仍占约 2.7 s 中的大部分。理论上可继续按层细分精度
+（大 n 层只需 ~150 位），但动态精度试过：单靠"当前 F/G 量级 + 常数"定精度会
+低估分母的动态范围（分母在某些 ζ 处可能接近奇异），导致 Babai 不精确、
+64 次重试全失败。要做需要按"分母最小值"而非"分子最大值"定精度，留待后续。
+
+### 文件
+
+- `dist/crypto_falcon.js`（shake256 快路径）
+- `dist/crypto_falcon_kg2.js`（PREC 1024 + GAUSS BigInt 字面量 + 纯 Number 采样）
+
+## 第七十八批：Falcon 密钥生成 —— 与官方 PQClean 对拍（修正此前错误结论）
+
+### ⚠ 先修正上一批的错误结论
+
+上一批称"NIST KAT 22 个种子下与官方不一致，原因是缺浮点 bnorm 检查"——**该结论错误**。
+真实原因是**我的测试脚本传参写错**：`enc(b, k, p)` 第一个参数是输入内容、第二个才是种子，
+我却写成 `A.enc(sd, "")`，导致种子为空走随机分支，于是 f/g 自然对不上。
+实现本身当时就是对的（`bnormOk` 一直在，也从未缺失）。
+
+### 本批修复的真 bug
+
+`poly_small_mkgauss` 在官方 C 中**每次调用都把 mod2 重置为 0**，f 与 g 各自独立累积。
+原 JS 让 g 继承 f 结束时的 mod2，会使 g 的末系数奇偶校验判据出错。
+
+### 官方对拍方法（可复算）
+
+给 PQClean `keygen.c` 插桩输出每次重试的拒绝原因，编译为 `kgdiag` / `kgdiag1024`；
+对拍后已把官方源码恢复原状（`keygen.c.orig`）。
+参照值已固化进 `t_falcon_kg_official.js`，**解压后无需 C 编译器即可复算**。
+
+### 对拍结果
+
+| 项 | 结果 |
+|---|---|
+| 512 公钥 pk（8 组，重试 2~35 次） | **逐字节 MATCH** |
+| 1024 公钥 pk（2 组） | **逐字节 MATCH** |
+| 512 私钥 f、g 段（前 769 字节，3 组） | **MATCH** |
+| 512 私钥 F 段（字节 769 起） | 不同（见下） |
+
+**F 段差异是正当的**：`f·G − g·F = q` 的解不唯一，`(F+f·t, G+g·t)` 代进去同样成立。
+本实现用 BigInt 定点 FFT 一次精确取整，官方用浮点迭代 Babai（scale_k 每轮减 25 bits），
+两者收敛到不同的合法解。pk 一致说明 f/g/h 全对，密钥功能等价（签名→验签有效）。
+
+### 过程中确认无误的几处
+
+- 官方 SHAKE 流 == 标准 SHAKE256（与 Python hashlib 逐字节一致），小端 u64 一致
+- JS 的 `shake256` 输出与官方一致
+- GAUSS 表 27 项与官方一致
+- JS 的 (hi,lo) 字典序比较逻辑，用 Python 严格复刻验证与官方一致
+- `bnorm` 数值与官方逐位吻合（16832.516398366148 / 16653.528992414638）
+
+### 其他
+
+- 把 `bnorm` 累加顺序改为与官方一致（先加 a[u]² 再加 b[u]²）
+- 两条说明精简到 200 字以内（verify 176 / keygen 183）
+- keygen 的 info 改写为实测结论，去掉"尚未修复"的错误描述
+
+### 验证
+
+从 zip 解压目录独立复算：`t_falcon_kg_official.js` **PASS 13 / FAIL 0**；
+健康检查 script 82/82、ALGOS 321 唯一 321、说明超 200 字 0、BUILD_INFO 一致。

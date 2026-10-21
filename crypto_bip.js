@@ -256,13 +256,45 @@ reg({ id: 'schnorr', name: 'Schnorr 签名 (BIP-340)', group: '椭圆曲线与�
     if (!schnorrVerify(pk, b, sig)) throw new Error('验签失败：签名无效或消息不匹配');
     return '验签通过 ✓';
   } });
-reg({ id: 'bip32', name: 'BIP-32 HD 钱包派生', group: '椭圆曲线与高级代数', key: true, param: true,
-  keyLabel: '种子（Hex，16~64 字节）',
+/* BIP-39 助记词 → BIP-32 根种子：PBKDF2-HMAC-SHA512(助记词, "mnemonic"+口令, 2048 轮, 64 字节)。
+   注意盐是 "mnemonic"+口令 的 UTF-8 字节（口令为空时盐就是 "mnemonic"）。 */
+function bip39ToSeedSync(mnemonic, passphrase) {
+  var salt = strToBytes('mnemonic' + (passphrase || ''));
+  var pw = strToBytes(String(mnemonic).trim().replace(/\s+/g, ' '));
+  var U = hmacSha512(pw, concatBytes(salt, new Uint8Array([0, 0, 0, 1])));
+  var T = U.slice();
+  for (var i = 1; i < 2048; i++) {
+    U = hmacSha512(pw, U);
+    for (var j = 0; j < T.length; j++) T[j] ^= U[j];
+  }
+  return T;
+}
+/* 判助记词还是种子 Hex：助记词含空格且不是合法 Hex */
+function bip32ParseSeed(k, passphrase) {
+  var s = String(k || '').trim();
+  if (!s) throw new Error('请填种子（Hex）或 BIP-39 助记词');
+  if (/^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0 && !/\s/.test(s)) {
+    var b = hexToBytes(s);
+    if (b.length < 16 || b.length > 64) throw new Error('BIP-32 种子需 16~64 字节（当前 ' + b.length + '）');
+    return b;
+  }
+  /* 当作助记词处理 */
+  var words = s.split(/\s+/).filter(function (x) { return x.length; });
+  var ok = [12, 15, 18, 21, 24];
+  if (ok.indexOf(words.length) < 0) {
+    throw new Error('助记词应为 12/15/18/21/24 个单词（当前 ' + words.length + ' 个）；' +
+      '若想直接填种子，请填 16~64 字节的 Hex（32~128 个十六进制字符）');
+  }
+  return bip39ToSeedSync(s, passphrase || '');
+}
+reg({ id: 'bip32', name: 'BIP-32 HD 钱包派生', group: '椭圆曲线与高级代数', key: true, key2: true, param: true, rawKey: true,
+  keyLabel: '种子（Hex，16~64 字节）或 BIP-39 助记词（12/15/18/21/24 词，自动转种子）',
+  key2Label: 'BIP-39 口令 passphrase（可留空；官方向量用 TREZOR）',
+  key2Optional: true,
   paramLabel: '派生路径（如 m/0\'/1/2\'），留空=只出主密钥', paramOptional: true,
-  info: 'BIP-32 分层确定性钱包：从种子派生 secp256k1 密钥树。支持硬化（\' 或 h）与普通派生。输出 xprv / xpub 及私钥、公钥、链码。',
-  enc: function (b, k, p, fmt) {
-    var seed = hexToBytes(k);
-    if (seed.length < 16 || seed.length > 64) throw new Error('BIP-32 种子需 16~64 字节');
+  info: 'BIP-32 分层确定性钱包：从种子派生 secp256k1 密钥树。支持硬化（\' 或 h）与普通派生。输出 xprv / xpub 及私钥、公钥、链码。第一栏可直接粘 BIP-39 助记词（自动走 PBKDF2-HMAC-SHA512 转 64 字节根种子），第二栏填助记词口令；也可直接填 Hex 种子（此时第二栏无效）。',
+  enc: function (b, k, p, fmt, k2) {
+    var seed = bip32ParseSeed(k, String(k2 || '').trim());
     var node = p && String(p).trim() ? bip32Derive(bip32Master(seed), String(p).trim()) : bip32Master(seed);
     var C = CURVES.k1;
     return 'xprv: ' + bip32Serialize(node) + '\nxpub: ' + bip32Serialize(bip32Neuter(node)) +

@@ -15,7 +15,7 @@ var APP_VERSION = '1.0.0';
 var APP_NAME = 'Aegis';
 var APP_CODENAME = 'AGS';
 var APP_TAGLINE = '149 种算法 · 零外部依赖';
-var BUILD_INFO = { algos: 296, stress: 2222, selfTest: 43 };
+var BUILD_INFO = { algos: 321, stress: 2222, selfTest: 43 };
 
 
 /* ============================================================
@@ -481,9 +481,12 @@ function modeEnc(plain, bs, blockFn, mode, padMode, iv) {
 function igeEnc(plain, bs, blockFn, padMode, iv) {
   var d = applyPad(plain, bs, padMode);
   var out = new Uint8Array(d.length);
-  /* 必须是拷贝而不是 subarray 视图：循环里要更新 xp/cp，
-     用视图会直接改写调用方的 IV（加密后回写 IV 框时就会给出被污染的值）。 */
-  var cp = iv.subarray(0, bs).slice(), xp = iv.subarray(bs, bs * 2).slice();
+  /* 必须是拷贝而不是视图：循环里要更新 xp/cp，用视图会直接改写调用方的 IV
+     （加密后回写 IV 框时会给出被污染的值，解密必然失败）。
+     这里用 new Uint8Array(...) 而不是 .slice()：Buffer.prototype.slice 返回的是
+     视图而非拷贝（Node 环境），Uint8Array.prototype.slice 才是拷贝——
+     依赖 .slice() 会让行为随输入是 Buffer 还是 Uint8Array 而变。 */
+  var cp = new Uint8Array(iv.subarray(0, bs)), xp = new Uint8Array(iv.subarray(bs, bs * 2));
   var P = new Uint8Array(bs), C = new Uint8Array(bs), i, j, x = new Uint8Array(bs), y;
   for (i = 0; i < d.length; i += bs) {
     for (j = 0; j < bs; j++) x[j] = d[i + j] ^ cp[j];
@@ -497,7 +500,7 @@ function igeEnc(plain, bs, blockFn, padMode, iv) {
 function igeDec(cipher, bs, invFn, padMode, iv) {
   if (cipher.length === 0 || cipher.length % bs !== 0) throw new Error('IGE 密文长度必须是块大小 ' + bs + ' 的整数倍');
   var out = new Uint8Array(cipher.length);
-  var cp = iv.subarray(0, bs).slice(), xp = iv.subarray(bs, bs * 2).slice();
+  var cp = new Uint8Array(iv.subarray(0, bs)), xp = new Uint8Array(iv.subarray(bs, bs * 2));
   var P = new Uint8Array(bs), C = new Uint8Array(bs), i, j, x = new Uint8Array(bs), y;
   for (i = 0; i < cipher.length; i += bs) {
     C.set(cipher.subarray(i, i + bs));
@@ -527,6 +530,13 @@ function isAEAD(mode) { return AEAD_MODES.indexOf(mode) >= 0; }
 function isCTS(mode) { return mode === 'CTS-CS1' || mode === 'CTS-CS2' || mode === 'CTS-CS3'; }
 function modeUsesPadding(mode) { return NO_PAD_MODES.indexOf(mode) < 0 && !isAEAD(mode); }
 /* AEAD 的 nonce 长度：GCM 12、CCM 13、SIV 0（确定性，无 nonce） */
+/* CCM 的标签长度只能是偶数 4..16（RFC 3610）；写别的值会得到"能加密但别的库解不开"的密文。 */
+function ccmTagLen(t) {
+  var v = (t === undefined || t === null || isNaN(t)) ? 16 : parseInt(t, 10);
+  if ([4, 6, 8, 10, 12, 14, 16].indexOf(v) < 0)
+    throw new Error('CCM 的标签长度只能是 4/6/8/10/12/14/16 字节（RFC 3610 规定偶数），当前是 ' + v + ' 字节');
+  return v;
+}
 function aeadNonceLen(mode) {
 if (mode === 'GCM') return 12;
 if (mode === 'CCM') return 13;
@@ -560,7 +570,7 @@ function modeSupportedBy(mode, algo) {
 function fallbackModeFor(algo) {
   return 'CBC';
 }
-function modeNeedsIV(mode) { return mode !== 'ECB' && mode !== 'XTS' && mode !== 'IGE' && !isAEAD(mode); }
+function modeNeedsIV(mode) { return mode !== 'ECB' && mode !== 'XTS' && mode !== 'IGE' && mode !== 'biIGE' && !isAEAD(mode); }
 
 /* IV 框在 XTS 下用作 tweak 输入，所以也要显示 */
 function modeShowsIVField(mode) { return mode !== 'ECB'; }
@@ -1805,7 +1815,7 @@ function pemDearchor(s) {
   if (!m) throw new Error('PEM 装甲格式不正确：应有 -----BEGIN CIPHER----- / -----END CIPHER----- 两行');
   return base64ToBytes(m[2].replace(/\s+/g, ''));
 }
-async function symEncrypt(algo, bytes, key, mode, padMode, ivHex, embedIV, aadStr, saltHex, tagLen) {
+async function symEncryptInner(algo, bytes, key, mode, padMode, ivHex, embedIV, aadStr, saltHex, tagLen) {
   var bs = algo.blockSize;
   var saltB = saltHex ? hexToBytes(saltHex) : null;
   var evpM = null;
@@ -1862,7 +1872,7 @@ async function symEncrypt(algo, bytes, key, mode, padMode, ivHex, embedIV, aadSt
       if (ivHex) ivProvided = true;
       var nw2 = (typeof nonceGuard === 'function') ? nonceGuard('CCM', keyBytes, nonce2) : null;
       if (nw2) window._lastNonceWarning = nw2;
-      var c = aesCcmEncrypt(bytes, keyBytes, nonce2, aad, 16);
+      var c = aesCcmEncrypt(bytes, keyBytes, nonce2, aad, ccmTagLen(tagLen));
       if (typeof nonceRemember === 'function') nonceRemember('CCM', keyBytes, nonce2);
       return { ciphertext: concatBytes(concatBytes(nonce2, c.ciphertext), c.tag), iv: nonce2, ivProvided: ivProvided , salt: saltUsed };
     }
@@ -1931,6 +1941,12 @@ async function symEncrypt(algo, bytes, key, mode, padMode, ivHex, embedIV, aadSt
     if (ivHex) ivProvided = true;
     return { ciphertext: igeEnc(bytes, bs, bf.enc, padMode, igv), iv: igv, ivProvided: ivProvided, salt: saltUsed };
   }
+  if (mode === 'biIGE') {
+    var bgv = ivHex ? hexToBytes(ivHex) : crypto.getRandomValues(new Uint8Array(bs * 4));
+    if (bgv.length !== bs * 4) throw new Error('biIGE 的 IV 必须为 ' + (bs * 4) + ' 字节（' + (bs * 8) + ' 位 Hex）：前 ' + (bs * 2) + ' 字节是 ivec1，后 ' + (bs * 2) + ' 字节是 ivec2');
+    if (ivHex) ivProvided = true;
+    return { ciphertext: biigeEnc(bytes, bs, bf.enc, padMode, bgv), iv: bgv, ivProvided: ivProvided, salt: saltUsed };
+  }
   if (modeNeedsIV(mode)) {
     if (ivHex) {
       iv = hexToBytes(ivHex);
@@ -1947,7 +1963,7 @@ async function symEncrypt(algo, bytes, key, mode, padMode, ivHex, embedIV, aadSt
   var out = (modeNeedsIV(mode) && wantEmbed) ? concatBytes(iv, body) : body;
   return { ciphertext: out, iv: iv, ivProvided: ivProvided , salt: saltUsed };
 }
-async function symDecrypt(algo, cipher, key, mode, padMode, ivHex, aadStr, saltHex, tagLen) {
+async function symDecryptInner(algo, cipher, key, mode, padMode, ivHex, aadStr, saltHex, tagLen) {
   var bs = algo.blockSize;
   var saltB = saltHex ? hexToBytes(saltHex) : null;
   var evpM = null;
@@ -1976,10 +1992,11 @@ async function symDecrypt(algo, cipher, key, mode, padMode, ivHex, aadStr, saltH
     }
     if (mode === 'CCM') {
       var nl2 = aeadNonceLen('CCM');
-      if (cipher.length < nl2 + 16) throw new Error('CCM 密文长度不足（需 nonce + 密文 + 16 字节标签）');
+      var ccmM2 = ccmTagLen(tagLen);
+      if (cipher.length < nl2 + ccmM2) throw new Error('CCM 密文长度不足（需 nonce + 密文 + ' + ccmM2 + ' 字节标签）');
       var nc = cipher.subarray(0, nl2);
-      var tc = cipher.subarray(cipher.length - 16);
-      return aesCcmDecrypt(cipher.subarray(nl2, cipher.length - 16), tc, keyBytes, nc, aad2, 16);
+      var tc = cipher.subarray(cipher.length - ccmM2);
+      return aesCcmDecrypt(cipher.subarray(nl2, cipher.length - ccmM2), tc, keyBytes, nc, aad2, ccmM2);
     }
     if (mode === 'EAX') {
       var nlE = aeadNonceLen('EAX');
@@ -2034,6 +2051,12 @@ async function symDecrypt(algo, cipher, key, mode, padMode, ivHex, aadStr, saltH
     var igv2 = hexToBytes(ivHex);
     if (igv2.length !== bs * 2) throw new Error('IGE 的 IV 必须为 ' + (bs * 2) + ' 字节');
     return igeDec(cipher, bs, bf.dec, padMode, igv2);
+  }
+  if (mode === 'biIGE') {
+    if (!ivHex) throw new Error('biIGE 解密必须提供 IV（' + (bs * 4) + ' 字节，填在 IV 框）');
+    var bgv2 = hexToBytes(ivHex);
+    if (bgv2.length !== bs * 4) throw new Error('biIGE 的 IV 必须为 ' + (bs * 4) + ' 字节');
+    return biigeDec(cipher, bs, bf.dec, padMode, bgv2);
   }
   if (modeNeedsIV(mode)) {
     if (ivHex) {
@@ -2337,7 +2360,11 @@ function keccakDigest(input, rateBytes, outLen, padByte) {
   }
   return out;
 }
-function sha3Digest(input, outLen) { return keccakDigest(input, outLen === 32 ? 136 : 72, outLen, 0x06); }
+/* FIPS-202 rate = (1600 - 2*容量)/8 = 200 - 2*outLen：
+   SHA3-224->144、256->136、384->104、512->72。
+   旧实现写作 (outLen===32 ? 136 : 72)，只覆盖 256/512，
+   224/384 会落到 72（SHA3-512 的 rate）而算错——这正是此前只开放 256/512 的原因。 */
+function sha3Digest(input, outLen) { return keccakDigest(input, 200 - 2 * outLen, outLen, 0x06); }
 
 function oneway(cfg) { cfg.oneway = true; cfg.dec = function () { throw new Error('单向哈希不支持解密'); }; reg(cfg); }
 oneway({ id:'md5', name:'MD5', group:'单向哈希', key:false, param:false, info:'128 位摘要。', enc:function(b,k,p,f){return bytesOut(md5Digest(b),f);} });
@@ -2346,7 +2373,9 @@ oneway({ id:'sha224', name:'SHA-224', group:'单向哈希', key:false, param:fal
 oneway({ id:'sha256', name:'SHA-256', group:'单向哈希', key:false, param:false, info:'SHA-2 家族，最常用。', enc:async function(b,k,p,f){return bytesOut(await webCryptoHash('SHA-256',b),f);} });
 oneway({ id:'sha384', name:'SHA-384', group:'单向哈希', key:false, param:false, info:'SHA-2 家族。', enc:async function(b,k,p,f){return bytesOut(await webCryptoHash('SHA-384',b),f);} });
 oneway({ id:'sha512', name:'SHA-512', group:'单向哈希', key:false, param:false, info:'SHA-2 家族。', enc:async function(b,k,p,f){return bytesOut(await webCryptoHash('SHA-512',b),f);} });
+oneway({ id:'sha3-224', name:'SHA-3-224', group:'单向哈希', key:false, param:false, info:'FIPS 202 的 SHA-3 224 位变体，rate=144。', enc:function(b,k,p,f){return bytesOut(sha3Digest(b,28),f);} });
 oneway({ id:'sha3-256', name:'SHA-3-256', group:'单向哈希', key:false, param:false, info:'Keccak 标准，纯 JS 实现。', enc:function(b,k,p,f){return bytesOut(sha3Digest(b,32),f);} });
+oneway({ id:'sha3-384', name:'SHA-3-384', group:'单向哈希', key:false, param:false, info:'FIPS 202 的 SHA-3 384 位变体，rate=104。', enc:function(b,k,p,f){return bytesOut(sha3Digest(b,48),f);} });
 oneway({ id:'sha3-512', name:'SHA-3-512', group:'单向哈希', key:false, param:false, info:'Keccak 标准，纯 JS 实现。', enc:function(b,k,p,f){return bytesOut(sha3Digest(b,64),f);} });
 oneway({ id:'blake2s', name:'BLAKE2s-256', group:'单向哈希', key:false, param:false, info:'纯 JS 实现。', enc:function(b,k,p,f){return bytesOut(blake2sDigest(b,32),f);} });
 oneway({ id:'sm3', name:'SM3', group:'单向哈希', key:false, param:false, info:'中国商用哈希标准。', enc:function(b,k,p,f){return bytesOut(sm3Digest(b),f);} });
@@ -2437,10 +2466,11 @@ reg({ id:'ed25519', name:'EdDSA (Ed25519)', group:'非对称加密', key:true,
   enc:async function(b,k,p,f){if(!k)throw new Error('请输入私钥 PEM');return bytesOut(await ed25519SignData(b,k),f);},
   dec:async function(s,k,p){if(!k)throw new Error('请输入公钥 PEM');if(!p)throw new Error('请填签名');var r=await ed25519VerifyData(strToBytes(s),base64ToBytes(p),k);return strToBytes(r);} });
 reg({ id:'ecdh-p256', name:'ECDH (P-256 密钥协商)', group:'非对称加密', key:true,
-  keyLabel:'己方私钥 PEM', param:true, paramLabel:'对方公钥 PEM',
+  keyLabel:'己方私钥 PEM', key2:true, key2Label:'对方公钥 PEM', rawKey:true,
+  param:true, paramOptional:true, paramLabel:'对方公钥 PEM（也可填在第二密钥栏）',
   info:'加密与解密同一操作：协商出 32 字节共享密钥。',
-  enc:async function(b,k,p,f){if(!k||!p)throw new Error('需要己方私钥与对方公钥');return bytesOut(await ecdhDerive(k,p,'P-256'),f);},
-  dec:async function(s,k,p){if(!k||!p)throw new Error('需要己方私钥与对方公钥');return ecdhDerive(k,p,'P-256');} });
+  enc:async function(b,k,p,f,k2){var pk=k2||p; if(!k||!pk)throw new Error('需要己方私钥与对方公钥');return bytesOut(await ecdhDerive(k,pk,'P-256'),f);},
+  dec:async function(s,k,p,k2){var pk=k2||p; if(!k||!pk)throw new Error('需要己方私钥与对方公钥');return ecdhDerive(k,pk,'P-256');} });
 
 /* ============================================================
  * UI
@@ -2453,6 +2483,7 @@ var $ = function (id) {
 var els = {
   algo: $('algo'), fileIn: $('fileIn'), btnDownload: $('btnDownload'), btnImportKey: $('btnImportKey'), keyField: $('keyField'), keyLabel: $('keyLabel'), key: $('key'), keyMode: $('keyMode'),
   paramField: $('paramField'), paramLabel: $('paramLabel'), param: $('param'),
+  key2Field: $('key2Field'), key2Label: $('key2Label'), key2: $('key2'),
   cipherRow: $('cipherRow'), modeField: $('modeField'), mode: $('mode'),
   padField: $('padField'), padding: $('padding'), ivField: $('ivField'), iv: $('iv'),
   algoInfo: $('algoInfo'), input: $('input'), drop: $('drop'), dropText: $('dropText'),
@@ -2464,7 +2495,7 @@ var els = {
   btnSelftest: $('btnSelftest'), selftestBox: $('selftestBox'), selftestOut: $('selftestOut'), nonceGuardField: $('nonceGuardField'), btnClearNonce: $('btnClearNonce'),
   kdf: $('kdf'), kdfIter: $('kdfIter'), kdfField: $('kdfField'), kdfIterField: $('kdfIterField'),
   kdfHash: $('kdfHash'), kdfHashField: $('kdfHashField'), kdfIterLabel: $('kdfIterLabel'),
-  aadField: $('aadField'), tagLenField: $('tagLenField'),
+  aadField: $('aadField'), tagLenField: $('tagLenField'), etm: $('etm'), etmField: $('etmField'),
   output: $('output'), ivInfoBox: $('ivInfoBox'), ivInfoLabel: $('ivInfoLabel'), ivInfoValue: $('ivInfoValue'),
   btnCopyIV: $('btnCopyIV'), btnCopy: $('btnCopy'), btnDownload: $('btnDownload'), msg: $('msg')
 };
@@ -2522,6 +2553,13 @@ function updateAlgoUI() {
   if (!a) return;
   if (els.keyField) els.keyField.classList.toggle('hidden', !a.key);
   if (a.key && els.keyLabel) els.keyLabel.textContent = a.keyLabel || '密钥';
+  /* 第二密钥栏：给非对称条目一个独立的「公钥 / 对方公钥」输入框，
+     不再挤在 param 里与 nonce、路径等参数混用。 */
+  if (els.key2Field) els.key2Field.classList.toggle('hidden', !a.key2);
+  if (a.key2 && els.key2Label) els.key2Label.textContent = a.key2Label || '第二密钥';
+  /* 明确要求原始密钥（Hex/文本）的条目隐藏「密钥模式」下拉：
+     这类条目填的是私钥/公钥/种子本身，走口令 KDF 派生只会得到错误的密钥。 */
+  if (els.keyMode) els.keyMode.classList.toggle('hidden', !!a.rawKey);
   if (els.paramField) els.paramField.classList.toggle('hidden', !a.param);
   if (a.param && els.paramLabel) els.paramLabel.textContent = a.paramLabel || '参数';
   if (els.algoInfo) els.algoInfo.textContent = a.info || '';
@@ -2605,7 +2643,9 @@ function updateModePadUI() {
   }
   /* 安全提示统一由 refreshSecurity 渲染（覆盖算法/模式/填充/KDF/nonce/容器/格式） */
   refreshSecurity();
-  if (els.aadField) els.aadField.classList.toggle('hidden', !isAEAD(mode));
+  /* AAD 字段：AEAD 模式要用；选了 EtM 附加认证的非 AEAD 模式同样要用 */
+  var _etmOn = els.etm && els.etm.value && els.etm.value !== 'none';
+  if (els.aadField) els.aadField.classList.toggle('hidden', !(isAEAD(mode) || _etmOn));
   /* nonce 复用检测只对 GCM/CCM 有意义（SIV 抗误用、其它模式无 nonce 语义） */
   if (els.nonceGuardField) els.nonceGuardField.classList.toggle('hidden', !(mode === 'GCM' || mode === 'CCM' || mode === 'EAX' || mode === 'OCB'));
   if (els.tagLenField) els.tagLenField.classList.toggle('hidden', !isAEAD(mode));
@@ -2776,7 +2816,10 @@ async function runEncrypt() {
     var key = els.key ? els.key.value : '';
     var param = els.param ? els.param.value : '';
     var fmt = els.fmt ? els.fmt.value : 'base64';
+    var key2 = els.key2 ? els.key2.value : '';
+    if (typeof a.enc !== 'function') throw new Error('「' + (a.name || a.id) + '」只有解密操作，请点「解密」按钮');
     if (a.key && !key && !a.keyOptional) throw new Error('请填写密钥');
+    if (a.key2 && !key2 && !a.key2Optional) throw new Error('请填写：' + (a.key2Label || '第二密钥'));
     if (a.param && !param && !a.paramOptional) throw new Error('请填写参数：' + (a.paramLabel || ''));
     var bytes = getInputBytes();
     window._lastNonceWarning = null;
@@ -2794,6 +2837,7 @@ async function runEncrypt() {
       var ivRaw = (els.iv && !els.ivField.classList.contains('hidden')) ? els.iv.value.trim() : '';
       var ivHex = _ivUserEdited ? ivRaw : '';
       var cont = els.container ? els.container.value : 'none';
+      window.CURRENT_ETM = els.etm ? els.etm.value : 'none';
       var saltHex = els.salt ? els.salt.value : '';
       var tagLen = els.tagLen ? parseInt(els.tagLen.value, 10) : 16;
       var aad = els.aad ? els.aad.value : '';
@@ -2906,7 +2950,7 @@ async function runEncrypt() {
         (window._lastNonceWarning ? '　⚠ ' + window._lastNonceWarning : ''),
         window._lastNonceWarning ? 'err' : 'ok');
     } else {
-      var result = await a.enc(bytes, key, param, fmt);
+      var result = await a.enc(bytes, key, param, fmt, key2);
       renderOutput(result);
       if (els.ivInfoBox) els.ivInfoBox.classList.add('hidden');
       setMsg('加密完成', 'ok');
@@ -2935,9 +2979,13 @@ async function runDecrypt() {
     var key = els.key ? els.key.value : '';
     var cont2 = els.container ? els.container.value : 'none';
     window.CURRENT_CONTAINER = cont2;
+    window.CURRENT_ETM = els.etm ? els.etm.value : 'none';
     var param = els.param ? els.param.value : '';
     var fmt = els.fmt ? els.fmt.value : 'base64';
+    var key2 = els.key2 ? els.key2.value : '';
+    if (typeof a.dec !== 'function') throw new Error('「' + (a.name || a.id) + '」只有加密操作，请点「加密」按钮');
     if (a.key && !key && !a.keyOptional) throw new Error('请填写密钥');
+    if (a.key2 && !key2 && !a.key2Optional) throw new Error('请填写：' + (a.key2Label || '第二密钥'));
     if (a.param && !param && !a.paramOptional) throw new Error('请填写参数：' + (a.paramLabel || ''));
     var text = els.input ? els.input.value : '';
     if (!text) throw new Error('请输入要解密的内容');
@@ -3009,7 +3057,7 @@ async function runDecrypt() {
       if (els.ivInfoBox) els.ivInfoBox.classList.add('hidden');
       setMsg('解密完成', 'ok');
     } else {
-      var r2 = await a.dec(text, key, param, fmt);
+      var r2 = await a.dec(text, key, param, fmt, key2);
       renderOutput(r2);
       if (els.ivInfoBox) els.ivInfoBox.classList.add('hidden');
       setMsg('解密完成', 'ok');
@@ -3088,6 +3136,7 @@ function doClear() {
     }
   } catch (e) { /* 清理失败不影响主流程 */ }
   if (els.key) els.key.value = '';
+  if (els.key2) els.key2.value = '';
   if (els.param) els.param.value = '';
   if (els.iv) els.iv.value = '';
   clearFile();
@@ -3385,3 +3434,41 @@ if (typeof document !== 'undefined' && document.readyState !== undefined) {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 }
+
+/* ============================================================
+ * A 组：Encrypt-then-MAC 包装层（RFC 7366）
+ * 包在 symEncrypt/symDecrypt 外面，一次实现覆盖全部无认证模式
+ * （CBC/CFB/OFB/CTR/ECB/PCBC/LRW/CTS×3/CFB8/CFB1/XTS/IGE/biIGE）。
+ * AEAD 模式本身已有认证，不重复附加。
+ * ============================================================ */
+function currentEtm() {
+  return (typeof CURRENT_ETM !== 'undefined' && CURRENT_ETM) ? CURRENT_ETM : 'none';
+}
+/* EtM 的 MAC 密钥用「不带 salt/容器」的独立派生，保证加解密两侧一致
+   （与模式内部的密钥派生相互独立，不受 XTS/LRW 双倍密钥影响）。 */
+async function etmMacKey(key, algo) {
+  return await deriveKeyBytes(key, algo.keyLen);
+}
+async function symEncrypt(algo, bytes, key, mode, padMode, ivHex, embedIV, aadStr, saltHex, tagLen) {
+  var r = await symEncryptInner(algo, bytes, key, mode, padMode, ivHex, embedIV, aadStr, saltHex, tagLen);
+  var etm = currentEtm();
+  if (etm !== 'none' && !isAEAD(mode)) {
+    var mk = await etmMacKey(key, algo);
+    r.ciphertext = etmAppend(etm, mk, r.iv, strToBytes(aadStr || ''), r.ciphertext);
+    r.etm = etm;
+  }
+  return r;
+}
+async function symDecrypt(algo, cipher, key, mode, padMode, ivHex, aadStr, saltHex, tagLen) {
+  var etm = currentEtm();
+  if (etm !== 'none' && !isAEAD(mode)) {
+    var mk2 = await etmMacKey(key, algo);
+    /* IV 必须与加密侧 r.iv 的语义严格一致：ECB 无 IV（加密侧给出 null），
+       这里若把用户填进 IV 框的值也算进去，MAC 就会对不上而误判为篡改。
+       XTS/LRW 的 tweak 和 IGE/biIGE 的长 IV 仍按用户填写的值参与。 */
+    var ivB = (mode === 'ECB') ? null : (ivHex ? hexToBytes(ivHex) : null);
+    cipher = etmSplit(etm, mk2, ivB, strToBytes(aadStr || ''), cipher);
+  }
+  return await symDecryptInner(algo, cipher, key, mode, padMode, ivHex, aadStr, saltHex, tagLen);
+}
+

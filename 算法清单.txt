@@ -9,8 +9,8 @@
   16 进制编码  【hex】
   ROT13  【rot13】
   ASCII 移位 / 凯撒  【caesar】
-  �清单已生成，算法 296
- 二进制  【binary】
+  摩尔斯电码  【morse】
+  二进制  【binary】
   八进制  【octal】
   Base45  【base45】
   Base62  【base62】
@@ -31,14 +31,16 @@
   栅栏密码  【railfence】
   Playfair 密码  【playfair】
   培根密码  【bacon】
-【单向哈希】(84)
+【单向哈希】(86)
   MD5  【md5】
   SHA-1  【sha1】
   SHA-224  【sha224】
   SHA-256  【sha256】
   SHA-384  【sha384】
   SHA-512  【sha512】
+  SHA-3-224  【sha3-224】
   SHA-3-256  【sha3-256】
+  SHA-3-384  【sha3-384】
   SHA-3-512  【sha3-512】
   BLAKE2s-256  【blake2s】
   SM3  【sm3】
@@ -116,7 +118,7 @@
   Parallel(SHA-256,SHA-512) 组合哈希  【parallel-sha256-512】
   Passhash9 口令哈希（Botan $9$）  【passhash9】
   Passhash9 校验（比对口令）  【passhash9-verify】
-【对称加密】(69)
+【对称加密】(78)
   AES-128  【aes128】
   AES-192  【aes192】
   AES-256  【aes256】
@@ -186,7 +188,16 @@
   MTProto 1.0 消息加密（Telegram，已废弃）  【mtproto1-enc】
   MTProto 1.0 消息解密（Telegram，已废弃）  【mtproto1-dec】
   Cascade(Serpent,AES-256) 级联加密  【cascade-serpent-aes256】
-【非对称加密】(33)
+  XSalsa20 流密码（NaCl 用）  【xsalsa20】
+  NaCl secretbox 封装（XSalsa20-Poly1305）  【nacl-secretbox-enc】
+  NaCl secretbox 解封（XSalsa20-Poly1305）  【nacl-secretbox-dec】
+  Fernet 加密（Python cryptography 格式）  【fernet-enc】
+  Fernet 解密（Python cryptography 格式）  【fernet-dec】
+  PASETO v4.local 加密  【paseto-v4-local-enc】
+  PASETO v4.local 解密  【paseto-v4-local-dec】
+  PASETO v2.local 加密  【paseto-v2-local-enc】
+  PASETO v2.local 解密  【paseto-v2-local-dec】
+【非对称加密】(37)
   RSA (RSA-OAEP)  【rsa】
   RSA-PSS 签名  【rsa-pss】
   ECDSA (P-256)  【ecdsa-p256】
@@ -220,10 +231,18 @@
   RSA-KEM 封装（ISO 18033-2）  【rsa-kem-encaps】
   RSA-KEM 解封装（ISO 18033-2）  【rsa-kem-decaps】
   SRP-6a 远程口令协议（RFC 5054）  【srp6a】
-【数字签名】(3)
+  NaCl box 封装（X25519 双方）  【nacl-box-enc】
+  NaCl box 解封（X25519 双方）  【nacl-box-dec】
+  NaCl sealed box 封装（匿名发送）  【nacl-sealedbox-enc】
+  NaCl sealed box 解封（匿名接收）  【nacl-sealedbox-dec】
+【数字签名】(7)
   ECDSA（椭圆曲线签名）  【ecc-ecdsa】
   DSA（离散对数签名）  【dsa】
   SM2 签名（国密）  【sm2-sign】
+  PASETO v4.public 签发（Ed25519）  【paseto-v4-public-sign】
+  PASETO v4.public 验签（Ed25519）  【paseto-v4-public-verify】
+  PASETO v2.public 签发（Ed25519）  【paseto-v2-public-sign】
+  PASETO v2.public 验签（Ed25519）  【paseto-v2-public-verify】
 【密钥工具】(4)
   密钥生成（19 种：ECC/SM2/Ed25519/X25519/Ed448/X448/RSA/…）  【keygen】
   密钥对导出（JWK / PEM）  【key-export】
@@ -240,7 +259,7 @@
   CRC64-XZ（Go ECMA）  【crc64xz】
   FNV-1a 32  【fnv1a32】
   CRC-24（OpenPGP，RFC 4880）  【crc24】
-【后量子密码】(29)
+【后量子密码】(32)
   ML-KEM-512（后量子 KEM）  【mlkem512】
   ML-KEM-768（后量子 KEM）  【mlkem768】
   ML-KEM-1024（后量子 KEM）  【mlkem1024】
@@ -270,6 +289,9 @@
   XMSS 验签（RFC 8391 后量子哈希签名）  【xmss-verify】
   XMSS 签名（RFC 8391，仅 h=10）  【xmss-sign】
   XMSS 密钥生成（RFC 8391，仅 h=10）  【xmss-keygen】
+  LMS 密钥生成（RFC 8554，公钥）  【lms-keygen】
+  LMS 签名（RFC 8554）  【lms-sign】
+  LMS 验签（RFC 8554）  【lms-verify】
 【椭圆曲线与高级代数】(23)
   BLS 签名（BLS12-381）  【bls_sig】
   BLS12-381 配对 e(P,Q)  【bls_pair】
@@ -307,5 +329,9 @@
 【密钥派生】(2)
   MTProto 2.0 密钥派生（auth_key+msg_key→aes_key/aes_iv）  【mtproto-kdf】
   MTProto 1.0 密钥派生（auth_key+msg_key→aes_key/aes_iv）  【mtproto1-kdf】
+【后量子】(3)
+  Falcon 验签（FN-DSA / FIPS 205）  【falcon-verify】
+  Falcon 签名（FN-DSA / FIPS 205）  【falcon-sign】
+  Falcon 密钥生成（FN-DSA / FIPS 205）  【falcon-keygen】
 
-TOTAL|296
+TOTAL|321
